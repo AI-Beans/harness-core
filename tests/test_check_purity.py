@@ -220,3 +220,40 @@ class TestEdgeCases:
         fake_domain = tmp_path / "nonexistent"
         result = checker.check_domain_purity(fake_domain, tmp_path)
         assert result == []
+
+
+class TestFixInstructions:
+    """Verify that violation messages include actionable FIX guidance."""
+
+    def test_cross_layer_has_fix(self, domain_tree: Path):
+        violations = _write_and_scan(domain_tree, """
+            from src.infrastructure.db import DB
+        """)
+        assert len(violations) == 1
+        assert "FIX:" in violations[0]
+        assert "interface" in violations[0].lower()
+
+    def test_external_dep_has_fix(self, domain_tree: Path):
+        violations = _write_and_scan(domain_tree, """
+            import requests
+        """)
+        assert len(violations) == 1
+        assert "FIX:" in violations[0]
+        assert "src/infrastructure/" in violations[0]
+
+    def test_dynamic_import_has_fix(self, domain_tree: Path):
+        violations = _write_and_scan(domain_tree, """
+            __import__("os")
+        """)
+        assert any("FIX:" in v for v in violations)
+
+    def test_relative_escape_has_fix(self, domain_tree: Path):
+        sub = domain_tree / "subpackage"
+        sub.mkdir()
+        (sub / "__init__.py").touch()
+        filepath = sub / "module.py"
+        filepath.write_text("from ... import infrastructure\n")
+        project_root = domain_tree.parent.parent
+        violations = checker.extract_violations(filepath, domain_tree, project_root)
+        assert len(violations) >= 1
+        assert any("FIX:" in v for v in violations)

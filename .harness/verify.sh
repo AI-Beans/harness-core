@@ -306,15 +306,6 @@ TELEGEN
 echo ""
 cat telemetry.json
 
-# ===== Update progress.txt =====
-if [ -d "docs/exec-plans" ]; then
-    echo ""
-    echo "Updating progress.txt..."
-    PROGRESS_LINE="### $(date '+%Y-%m-%d %H:%M:%S') - Task: ${TASK_ID:-none} - Dispatcher: microkernel"
-    echo "$PROGRESS_LINE" >> docs/exec-plans/progress.txt
-    echo "  ✓ Progress updated"
-fi
-
 # ===== Final verification gate =====
 OVERALL_EXIT=0
 for ef in "$RESULT_DIR"/*.exit; do
@@ -324,6 +315,17 @@ for ef in "$RESULT_DIR"/*.exit; do
         OVERALL_EXIT=1
     fi
 done
+
+# ===== Update progress log =====
+PROGRESS_FILE="docs/exec-plans/progress.md"
+if [ -d "docs/exec-plans" ]; then
+    echo ""
+    PASS_FAIL="PASS"
+    [ "$OVERALL_EXIT" -ne 0 ] && PASS_FAIL="FAIL"
+    PROGRESS_LINE="### $(date '+%Y-%m-%d %H:%M:%S') — Task: ${TASK_ID:-none} — ${PASS_FAIL}"
+    echo "" >> "$PROGRESS_FILE"
+    echo "$PROGRESS_LINE" >> "$PROGRESS_FILE"
+fi
 
 echo ""
 if [ "$OVERALL_EXIT" -eq 0 ]; then

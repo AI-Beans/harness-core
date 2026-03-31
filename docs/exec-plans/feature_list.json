@@ -1,4 +1,5 @@
 {
-  "version": "1.0",
-  "tasks": []
+  "version": "2.0",
+  "instructions": "Each feature has a 'passes' field. Agents: set passes=true ONLY after verifying the feature works end-to-end. NEVER remove or edit feature descriptions or steps — only change the 'passes' field.",
+  "features": []
 }
