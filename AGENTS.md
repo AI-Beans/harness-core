@@ -1,4 +1,4 @@
-# KKD Agent-Native Standard (KKD-ANS) v2.0
+# AGENTS.md — KKD Agent-Native Standard (KKD-ANS) v2.0
 
 **Microkernel Architecture** — Configuration-driven, plugin-based, zero-inference verification.
 
@@ -6,7 +6,7 @@
 
 | Purpose | Path |
 |---------|------|
-| **System Architecture** | `docs/ARCHITECTURE.md` |
+| **System Architecture (5 Laws)** | `docs/ARCHITECTURE.md` |
 | **Runtime Config** | `harness.yaml` |
 | **Core Beliefs** | `docs/design-docs/core-beliefs.md` |
 | **Development Plans** | `docs/PLANS.md` |
@@ -48,51 +48,26 @@
             └── auto_commit.sh         #   Auto-commit on all-pass
 ```
 
-## KKD-ANS 4 Core Laws
+## The 5 Architecture Laws
 
-### Law 1: Cognitive Addressing (Read the Context)
+(See `docs/ARCHITECTURE.md` for full definitions and enforcement details.)
 
-> Before any coding task, read `harness.yaml` first.
+| Law | Name | Agent Rule |
+|-----|------|------------|
+| **Law 1** | Isolation | `.harness/` is never imported by `src/`. Read `harness.yaml` before any task. |
+| **Law 2** | Zero-Inference Verification | `verify.sh` is the sole judge. Run it before reporting done. If it fails, self-fix. |
+| **Law 3** | Configuration | All behavior externalized. No magic constants. `harness.yaml` is the source of truth. |
+| **Law 4** | Domain Purity | `src/domain/` may only import stdlib + `src.domain.*`. Cross-layer imports are auto-rejected. |
+| **Law 5** | Telemetry | Every run generates `telemetry.json`. Update `progress.txt` after each green run. |
 
-- Identify `project_type` and which modules are `enabled: true`.
-- Never optimize a module that is `enabled: false`.
-- Never skip a module that is `enabled: true`.
+### Law 4 Detail (Critical)
 
-### Law 2: Zero-Inference Verification Loop
+The `check_purity.py` AST scanner enforces:
 
-> `verify.sh` is the sole judge. No human review.
+- **ALLOWED**: `typing`, `collections.abc`, `contextlib`, `functools`, `itertools`, `types`, `dataclasses`, `enum`, `abc`, `src.domain.*`
+- **BLOCKED**: `src.infrastructure.*`, `src.config.*`, any third-party package
 
-**Mandatory protocol before reporting "done":**
-```
-[Modify code] → [run ./.harness/verify.sh] → [read errors] → [self-fix] → repeat until green
-```
-- **RED LINE**: If `verify.sh` exits non-zero, you MUST NOT ask for help. Read stdout/stderr, fix locally, re-run.
-- Only report completion when all plugins report PASS.
-
-### Law 3: Stigmergy (System of Record)
-
-> Chat context is ephemeral. System memory must be permanent.
-
-- After each successful `verify.sh` pass, update `docs/exec-plans/progress.txt`.
-- Format: what was done / why / what's next — machine-readable, agent-handoff-ready.
-
-### Law 4: Absolute Domain Purity
-
-> Working code ≠ correct architecture.
-
-- `src/domain/` imports ONLY: `typing`, `collections.abc`, `contextlib`, `functools`, `itertools`, `types`, `dataclasses`, `enum`, `abc`, `src.*`.
-- `.harness/plugins/architecture/check_purity.py` enforces this via AST scan on ALL `.py` files under `src/domain/`.
-- Any cross-layer import (e.g., domain importing infrastructure) is an automatic FAIL.
-
-## Architecture Laws (Technical Enforcement)
-
-| Law | Description | Enforcement |
-|-----|-------------|-------------|
-| Law 1 | `src/` vs `.harness/` Isolation | verify.sh dispatcher never imported by app |
-| Law 2 | No Manual Code Writing | AI-generated only, config-driven |
-| Law 3 | Configuration Management | `harness.yaml` + `src/config/` |
-| Law 4 | Domain Purity | `check_purity.py` AST scanner |
-| Law 5 | Telemetry & Observability | `telemetry.json` via `json.dump()` |
+The scanner checks full import paths, not just root segments. `from src.infrastructure.logger import Logger` will be caught.
 
 ## Verification
 
@@ -138,6 +113,6 @@ bash .harness/verify.sh
 ## Development Workflow
 
 1. **Plan**: Read `harness.yaml` → check `docs/exec-plans/feature_list.json`
-2. **Implement**: Follow 4 Architecture Laws + KKD-ANS Core Laws
+2. **Implement**: Follow 5 Architecture Laws
 3. **Verify**: Run `bash .harness/verify.sh` — fix until green
 4. **Record**: Update `docs/exec-plans/progress.txt`

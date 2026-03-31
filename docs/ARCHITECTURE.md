@@ -70,23 +70,13 @@
 
 **Rationale**: `.harness/` contains operational tooling dispatched by `verify.sh`. Application code in `src/` must remain pure business logic, testable without running CI/CD scripts.
 
-### Law 2: No Manual Code Writing Philosophy
+### Law 2: Zero-Inference Verification
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│  PHILOSOPHY: AI writes all production code                        │
-│                                                                  │
-│  EXCEPTIONS (allowed for bootstrapping only):                     │
-│  1. Placeholder module files                                     │
-│  2. config/settings skeleton                                      │
-│  3. First test files to define expected behavior                 │
-│                                                                  │
-│  PROHIBITED:                                                     │
-│  ✗ Manual implementation of business logic                       │
-│  ✗ Hardcoded values that should be configurable                 │
-│  ✗ Comments explaining what code does (code should be self-documenting)│
-└──────────────────────────────────────────────────────────────────┘
-```
+`verify.sh` is the sole judge. No human review.
+
+- Before reporting "done", run `verify.sh`.
+- If it exits non-zero, read errors, self-fix, re-run.
+- Never ask for help on a red build.
 
 ### Law 3: Configuration Management
 
@@ -119,11 +109,11 @@ src/domain/ rules:
 ├── NO file I/O operations
 ├── NO network calls
 ├── NO environment variable access
-└── Only: typing, collections.abc, contextlib, functools,
-         itertools, types, dataclasses, enum, abc, src.*
+└── Only: stdlib (typing, collections.abc, contextlib, functools,
+         itertools, types, dataclasses, enum, abc) + src.domain.*
 ```
 
-**Enforcement**: `.harness/plugins/architecture/check_purity.py` performs AST-level scanning of ALL `.py` files under `src/domain/`. Any non-allowed import triggers immediate FAIL.
+**Enforcement**: `.harness/plugins/architecture/check_purity.py` performs AST-level scanning of ALL `.py` files under `src/domain/`. It checks full import paths — not just root segments — so `from src.infrastructure.logger import Logger` is correctly caught as a violation despite the root being `src`.
 
 ### Law 5: Telemetry & Observability
 
@@ -204,6 +194,7 @@ harness-core/
 2. **Import Boundaries**:
    - `check_purity.py` enforces no infrastructure/config imports in domain
    - AST-level scan catches all violations across ALL `.py` files
+   - Full path checking prevents `src.*` bypass
 
 3. **Coverage Gate**:
    - 80% minimum line coverage (configurable)

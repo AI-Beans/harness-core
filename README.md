@@ -65,7 +65,7 @@ harness-core/
 | **Law 1** | Isolation | `src/` and `.harness/` are strictly separated |
 | **Law 2** | AI-Generated | All production code is AI-written |
 | **Law 3** | Configuration | `harness.yaml` is the single source of truth |
-| **Law 4** | Domain Purity | `src/domain/` — zero I/O, zero infra deps |
+| **Law 4** | Domain Purity | `src/domain/` — only stdlib + `src.domain.*` imports allowed |
 | **Law 5** | Telemetry | Every run emits `telemetry.json` via `json.dump()` |
 
 ## Quick Start

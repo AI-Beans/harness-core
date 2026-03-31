@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Domain Purity Checker - Law 4 Enforcement (Plugin Version).
+"""Domain Purity Checker - Law 4 Enforcement.
 
-Scans src/domain/ for ALL .py files and verifies no external imports exist
-(except typing module imports and stdlib utility modules).
+Scans src/domain/ for ALL .py files and verifies that imports are restricted to:
+  - Python stdlib modules (allowlisted)
+  - Other modules within src/domain/ only (same layer)
+
+Any import from src/infrastructure, src/config, or third-party packages is a violation.
 
 Exit codes:
     0 - All checks passed, domain is pure
     1 - Violation detected (external import found)
-    2 - Error (e.g., file read error)
 
 Usage:
     python3 check_purity.py [RESULT_FILE]
-
-    RESULT_FILE: optional path to write JSON result for the dispatcher.
 """
 
 import ast
@@ -20,60 +20,113 @@ import json
 import sys
 from pathlib import Path
 
-ALLOWED_IMPORTS = {
-    "typing",
-    "collections.abc",
-    "contextlib",
-    "functools",
-    "itertools",
-    "types",
-    "dataclasses",
-    "enum",
-    "abc",
-    "src",
-}
+STDLIB_ALLOWLIST = frozenset(
+    {
+        "typing",
+        "collections",
+        "collections.abc",
+        "contextlib",
+        "functools",
+        "itertools",
+        "types",
+        "dataclasses",
+        "enum",
+        "abc",
+        "re",
+        "math",
+        "datetime",
+        "decimal",
+        "copy",
+        "operator",
+        "string",
+        "uuid",
+    }
+)
 
 
-def extract_imports(filepath: Path) -> set[str]:
-    """Extract all import module roots from a Python file via AST walk."""
-    imports: set[str] = set()
+def _is_submodule(module: str, prefix: str) -> bool:
+    return module == prefix or module.startswith(prefix + ".")
+
+
+def extract_violations(filepath: Path, domain_path: Path) -> list[str]:
+    """Extract import violations from a single Python file.
+
+    A domain file may ONLY import:
+      - Modules in the STDLIB_ALLOWLIST
+      - Modules within src.domain.* (same layer)
+
+    Everything else is a violation:
+      - src.infrastructure.* (cross-layer)
+      - src.config.* (cross-layer)
+      - Any third-party package (e.g., requests, flask)
+    """
+    violations: list[str] = []
     try:
         content = filepath.read_text()
     except OSError:
-        return imports
+        return violations
 
     try:
         tree = ast.parse(content, filename=str(filepath))
     except SyntaxError:
-        return imports
+        return violations
+
+    domain_dotted = "src.domain"
+    forbidden_prefixes = ("src.infrastructure", "src.config", "src.presentation")
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                imports.add(alias.name.split(".")[0])
+                violations.extend(
+                    _check_module(alias.name, domain_dotted, forbidden_prefixes)
+                )
         elif isinstance(node, ast.ImportFrom):
             if node.module:
-                imports.add(node.module.split(".")[0])
+                violations.extend(
+                    _check_module(node.module, domain_dotted, forbidden_prefixes)
+                )
 
-    return imports
+    return violations
+
+
+def _check_module(
+    module: str,
+    domain_dotted: str,
+    forbidden_prefixes: tuple[str, ...],
+) -> list[str]:
+    """Check a single import module string against domain purity rules.
+
+    Returns a list of violation descriptions (empty if pure).
+    """
+    root = module.split(".")[0]
+
+    if root in STDLIB_ALLOWLIST:
+        return []
+
+    if root == "src":
+        if _is_submodule(module, domain_dotted):
+            return []
+        for fp in forbidden_prefixes:
+            if _is_submodule(module, fp):
+                return [f"{module} (cross-layer import)"]
+        if _is_submodule(module, "src"):
+            return [f"{module} (import outside domain layer)"]
+        return []
+
+    return [f"{module} (external dependency: {root})"]
 
 
 def check_domain_purity(domain_path: Path) -> list[tuple[Path, str]]:
-    """Check domain layer for impurity violations across ALL .py files.
-
-    FIX: Previous version only scanned __init__.py via rglob("__init__.py").
-    Now scans every .py file under the domain directory.
-    """
+    """Check domain layer for impurity violations across ALL .py files."""
     violations: list[tuple[Path, str]] = []
 
     if not domain_path.exists():
         return violations
 
     for py_file in domain_path.rglob("*.py"):
-        imports = extract_imports(py_file)
-        for imp in imports:
-            if imp not in ALLOWED_IMPORTS and not imp.startswith("src."):
-                violations.append((py_file, imp))
+        file_violations = extract_violations(py_file, domain_path)
+        for desc in file_violations:
+            violations.append((py_file, desc))
 
     return violations
 
@@ -90,14 +143,14 @@ def main() -> int:
     if violations:
         print("DOMAIN PURITY VIOLATION - Law 4 BREACH")
         print("=" * 50)
-        for filepath, imp in violations:
+        for filepath, desc in violations:
             try:
                 rel_path = filepath.relative_to(project_root)
             except ValueError:
                 rel_path = filepath
-            print(f"  ✗ {rel_path}: imports '{imp}'")
+            print(f"  ✗ {rel_path}: {desc}")
         print("=" * 50)
-        print("Law 4: Domain layer must be pure (typing/stdlib only)")
+        print("Law 4: Domain layer must import only stdlib + src.domain.*")
         print(f"Scanned {files_scanned} file(s), found {len(violations)} violation(s)")
         exit_code = 1
     else:
