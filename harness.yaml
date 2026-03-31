@@ -1,6 +1,13 @@
 version: 1.0
 project_type: python
 
+plugin_timeout: 300
+
+paths:
+  domain: src/domain
+  src: src
+  tests: tests
+
 modules:
   linter:
     enabled: true
@@ -10,5 +17,6 @@ modules:
     plugin: mypy
   tests:
     enabled: true
+    coverage_threshold: 80
   domain_purity:
     enabled: true

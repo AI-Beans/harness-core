@@ -1,8 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+PROJECT_ROOT="${HARNESS_PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
 cd "$PROJECT_ROOT"
+
+TOOLCHAIN_REQ=".harness/requirements-toolchain.txt"
 
 if [ -d ".venv" ]; then
     echo "[Env] .venv exists — verifying activation..."
@@ -35,14 +37,22 @@ if command -v uv &>/dev/null; then
         echo "[Env] Syncing dependencies from pyproject.toml..."
         uv sync 2>/dev/null || true
     fi
-    echo "[Env] Installing toolchain (ruff, mypy, pytest, pytest-cov)..."
-    uv pip install ruff mypy pytest pytest-cov
+    echo "[Env] Installing pinned toolchain..."
+    if [ -f "$TOOLCHAIN_REQ" ]; then
+        uv pip install -r "$TOOLCHAIN_REQ"
+    else
+        uv pip install "ruff>=0.9,<1" "mypy>=1.15,<2" "pytest>=8,<9" "pytest-cov>=6,<7"
+    fi
 else
     echo "[Env] uv not found — falling back to python3 -m venv"
     python3 -m venv .venv
     source .venv/bin/activate
-    echo "[Env] Installing toolchain (ruff, mypy, pytest, pytest-cov)..."
-    pip install --quiet ruff mypy pytest pytest-cov
+    echo "[Env] Installing pinned toolchain..."
+    if [ -f "$TOOLCHAIN_REQ" ]; then
+        pip install --quiet -r "$TOOLCHAIN_REQ"
+    else
+        pip install --quiet "ruff>=0.9,<1" "mypy>=1.15,<2" "pytest>=8,<9" "pytest-cov>=6,<7"
+    fi
 fi
 
 PYTHON_PATH=$(command -v python3)

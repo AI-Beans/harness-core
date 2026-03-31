@@ -1,4 +1,4 @@
-# ARCHITECTURE.md - KKD-ANS v2.0 Microkernel
+# ARCHITECTURE.md - KKD-ANS v2.1 Microkernel
 
 ## System Architecture
 
@@ -9,15 +9,18 @@
 │                     harness.yaml                            │
 │               (Configuration Hub — Law 3)                   │
 │  project_type: python                                       │
+│  plugin_timeout: 300                                        │
+│  paths: { domain, src, tests }                              │
 │  modules: { linter, type_checker, tests, domain_purity }    │
 └──────────────┬──────────────────────────────────────────────┘
-               │ parsed by dispatcher
+               │ parsed by dispatcher (inline comments stripped)
                ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                   .harness/verify.sh                        │
 │                (Dispatcher — Law 2 Judge)                   │
-│  reads harness.yaml → dispatches enabled plugins            │
-│  captures results → generates telemetry.json                │
+│  validates python3 + config → dispatches plugins w/ timeout │
+│  captures results → generates telemetry → appends history   │
+│  fails fast on: no python3, empty config, bad project_type  │
 └──────┬──────────┬──────────┬──────────┬─────────────────────┘
        │          │          │          │
        ▼          ▼          ▼          ▼
@@ -59,16 +62,16 @@
 │  └── config/     → Settings loader, env var access                │
 │                                                                  │
 │  .harness/ (OPERATIONAL TOOLING, NOT PART OF APPLICATION CODE)  │
-│  ├── verify.sh        → Dispatcher: parses harness.yaml           │
-│  └── plugins/         → Isolated toolchain scripts                │
-│      ├── python/      → ruff, mypy, pytest                        │
-│      └── architecture/→ check_purity.py                           │
+│  ├── verify.sh              → Dispatcher: parses harness.yaml     │
+│  ├── requirements-toolchain.txt → Pinned tool versions (optional) │
+│  └── plugins/               → Isolated toolchain scripts          │
+│      ├── python/            → ruff, mypy, pytest                  │
+│      ├── architecture/      → check_purity.py                     │
+│      └── git/               → auto_commit.sh                      │
 │                                                                  │
 │  ENFORCEMENT: .harness/ is never importable by src/              │
 └──────────────────────────────────────────────────────────────────┘
 ```
-
-**Rationale**: `.harness/` contains operational tooling dispatched by `verify.sh`. Application code in `src/` must remain pure business logic, testable without running CI/CD scripts.
 
 ### Law 2: Zero-Inference Verification
 
@@ -76,7 +79,8 @@
 
 - Before reporting "done", run `verify.sh`.
 - If it exits non-zero, read errors, self-fix, re-run.
-- Never ask for help on a red build.
+- **Fuse Rule**: Maximum 5 consecutive retries on the same failure. After that, stop and report in `progress.txt`.
+- Never ask for help on a red build (until fuse blows).
 
 ### Law 3: Configuration Management
 
@@ -86,7 +90,10 @@
 │                                                                  │
 │  Controls:                                                       │
 │  - project_type (python, node, go, ...)                          │
+│  - plugin_timeout (seconds per plugin, default 300)              │
+│  - paths.domain, paths.src, paths.tests                          │
 │  - module enable/disable switches                                │
+│  - coverage_threshold per test module                            │
 │  - plugin assignments per module                                 │
 │                                                                  │
 │  src/config/ — Application-level settings                        │
@@ -109,96 +116,67 @@ src/domain/ rules:
 ├── NO file I/O operations
 ├── NO network calls
 ├── NO environment variable access
+├── NO dynamic imports (__import__, exec, eval, compile)
+├── NO importlib.import_module() or similar
+├── NO relative imports that escape domain boundary
 └── Only: stdlib (typing, collections.abc, contextlib, functools,
-         itertools, types, dataclasses, enum, abc) + src.domain.*
+         itertools, types, dataclasses, enum, abc, re, math,
+         datetime, decimal, copy, operator, string, uuid) + src.domain.*
 ```
 
-**Enforcement**: `.harness/plugins/architecture/check_purity.py` performs AST-level scanning of ALL `.py` files under `src/domain/`. It checks full import paths — not just root segments — so `from src.infrastructure.logger import Logger` is correctly caught as a violation despite the root being `src`.
+**Enforcement**: `.harness/plugins/architecture/check_purity.py` performs AST-level scanning of ALL `.py` files under `src/domain/`. It checks:
+
+1. **Static imports** (ast.Import, ast.ImportFrom) — full path checking
+2. **Dynamic imports** — calls to `__import__()`, `exec()`, `eval()`, `compile()`, `importlib.import_module()`, `importlib.find_module()`, `importlib.find_spec()`
+3. **Relative imports** — boundary resolution ensures `from ..` cannot escape domain
 
 ### Law 5: Telemetry & Observability
 
-Every `verify.sh` execution generates `telemetry.json` via `json.dump()`:
-- Timestamp, task_id
-- Per-plugin: exit_code, issues count, tool name
-- Test metrics: passed/failed, coverage percentage
-- Complexity metrics: src_files, test_files, total_lines
+Every `verify.sh` execution:
+- Generates `telemetry.json` (latest run snapshot)
+- Appends to `.telemetry_history.json` (capped at 100 entries)
+- Records timestamp, task_id, per-plugin metrics, complexity metrics
 
-**No heredoc injection** — all JSON generation uses Python's `json` module.
+All JSON generation uses Python's `json` module (no heredoc injection).
 
-## Directory Structure
+## Configuration Reference
 
-```
-harness-core/
-├── AGENTS.md                          # Agent entry point & protocol
-├── README.md                          # Project overview
-├── harness.yaml                       # Microkernel configuration hub
-├── .gitignore                         # VCS exclusions
-├── telemetry.json                     # Generated by verify.sh
-├── src/
-│   ├── __init__.py
-│   ├── domain/                        # Pure business logic
-│   │   └── __init__.py
-│   ├── infrastructure/                # I/O, adapters, telemetry
-│   │   └── __init__.py
-│   └── config/                        # Settings loader
-│       └── __init__.py
-├── tests/
-│   ├── __init__.py
-│   └── test_skeleton.py
-├── docs/
-│   ├── ARCHITECTURE.md                # This file
-│   ├── PLANS.md
-│   ├── METRICS.md
-│   ├── design-docs/
-│   │   └── core-beliefs.md
-│   ├── exec-plans/
-│   │   ├── progress.txt
-│   │   └── feature_list.json
-│   └── references/
-└── .harness/                          # CI/CD microkernel
-    ├── verify.sh                      # Dispatcher (parses harness.yaml)
-    └── plugins/
-        ├── python/
-        │   ├── setup_env.sh           # .venv bootstrap (uv / venv fallback)
-        │   ├── run_linter.sh          # ruff check
-        │   ├── run_typecheck.sh       # mypy src/
-        │   └── run_tests.sh           # pytest --cov=src
-        ├── architecture/
-        │   └── check_purity.py        # AST domain purity scanner
-        └── git/
-            └── auto_commit.sh         # Auto-commit on all-pass
+```yaml
+version: 1.0
+project_type: python
+
+plugin_timeout: 300           # max seconds per plugin (default: 300)
+
+paths:
+  domain: src/domain          # domain purity scan target
+  src: src                    # mypy + coverage target
+  tests: tests                # test discovery root
+
+modules:
+  linter:
+    enabled: true
+    plugin: ruff
+  type_checker:
+    enabled: true
+    plugin: mypy
+  tests:
+    enabled: true
+    coverage_threshold: 80    # minimum line coverage %
+  domain_purity:
+    enabled: true
 ```
 
-## Technology Stack
+### Environment Variables
 
-| Layer | Tool |
-|-------|------|
-| Language | Python 3.10+ |
-| Package Manager | uv (preferred) / pip fallback |
-| Linting | ruff |
-| Type Checking | mypy |
-| Testing | pytest + pytest-cov |
-| Config | harness.yaml (YAML) |
-| Telemetry | json.dump() (Python stdlib) |
-| VCS | git (auto-commit on green) |
+All scripts respect these overrides for Submodule integration:
 
-## Enforcement
-
-1. **CI/CD Gate** (verify.sh dispatcher):
-   - Reads `harness.yaml` for enabled modules
-   - Dispatches each enabled plugin in order
-   - Captures exit codes independently (no short-circuit)
-   - Generates `telemetry.json` with all results
-   - Auto-commits on all-pass
-
-2. **Import Boundaries**:
-   - `check_purity.py` enforces no infrastructure/config imports in domain
-   - AST-level scan catches all violations across ALL `.py` files
-   - Full path checking prevents `src.*` bypass
-
-3. **Coverage Gate**:
-   - 80% minimum line coverage (configurable)
-   - Parsed via Python `re` module (no fragile grep/awk pipes)
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `HARNESS_PROJECT_ROOT` | auto-detected | Host project root when used as Submodule |
+| `HARNESS_DOMAIN_PATH` | from harness.yaml `paths.domain` | Domain purity scan target |
+| `HARNESS_SRC_PATHS` | from harness.yaml `paths.src` | MyPy + coverage target |
+| `HARNESS_TEST_PATHS` | from harness.yaml `paths.tests` | Test discovery root |
+| `HARNESS_COVERAGE_THRESHOLD` | from harness.yaml | Minimum coverage % |
 
 ## Plugin Protocol
 
@@ -207,3 +185,39 @@ Each plugin must:
 2. Exit 0 on success, non-zero on failure
 3. Optionally accept a result file path as `$1` / `sys.argv[1]`
 4. Write a JSON result with at minimum: `{"exit_code": N, "tool": "...", "issues": N}`
+5. Complete within `plugin_timeout` seconds or be killed
+
+## Technology Stack
+
+| Layer | Tool |
+|-------|------|
+| Language | Python 3.10+ |
+| Package Manager | uv (preferred) / pip fallback |
+| Linting | ruff (version-pinned) |
+| Type Checking | mypy (version-pinned) |
+| Testing | pytest + pytest-cov (version-pinned) |
+| Config | harness.yaml (YAML with inline comment support) |
+| Telemetry | json.dump() (Python stdlib) with history |
+| VCS | git (explicit file staging, not git add -A) |
+
+## Enforcement
+
+1. **CI/CD Gate** (verify.sh dispatcher):
+   - Validates python3 availability (fails fast if missing)
+   - Reads `harness.yaml` with inline comment stripping
+   - Validates config is non-empty and project_type is supported
+   - Dispatches each enabled plugin with configurable timeout
+   - Generates `telemetry.json` + appends to history
+   - Fails if zero plugins dispatched
+   - Auto-commits on all-pass (explicit file staging)
+
+2. **Import Boundaries** (check_purity.py):
+   - Static imports: full path checking
+   - Dynamic imports: __import__, exec, eval, compile detection
+   - Attribute calls: importlib.import_module detection
+   - Relative imports: boundary-aware resolution
+   - AST-level scan catches all violations across ALL `.py` files
+
+3. **Coverage Gate**:
+   - Threshold configurable via harness.yaml (default 80%)
+   - Parsed via Python `re` module (no fragile grep/awk pipes)
