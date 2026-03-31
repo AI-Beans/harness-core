@@ -142,12 +142,24 @@ def _check_module(
             return []
         for fp in forbidden_prefixes:
             if _is_submodule(module, fp):
-                return [f"{module} (cross-layer import)"]
+                return [
+                    f"{module} (cross-layer import). "
+                    f"FIX: Move this dependency behind an interface in src/domain/ "
+                    f"and inject the implementation from src/infrastructure/ or src/config/."
+                ]
         if _is_submodule(module, "src"):
-            return [f"{module} (import outside domain layer)"]
+            return [
+                f"{module} (import outside domain layer). "
+                f"FIX: Domain code must only import from src.domain.* or stdlib."
+            ]
         return []
 
-    return [f"{module} (external dependency: {root})"]
+    return [
+        f"{module} (external dependency: {root}). "
+        f"FIX: Third-party packages are not allowed in src/domain/. "
+        f"If you need this functionality, wrap it in src/infrastructure/ "
+        f"and pass it to domain via dependency injection."
+    ]
 
 
 def _check_relative_import(
@@ -166,7 +178,9 @@ def _check_relative_import(
         names = ", ".join(a.name for a in node.names)
         import_str = f"from {dots}{module_part} import {names}"
         violations.append(
-            f"{import_str} (relative import escapes domain boundary)"
+            f"{import_str} (relative import escapes domain boundary). "
+            f"FIX: Use absolute imports (from src.domain.X import Y) within domain, "
+            f"or reduce the relative import level to stay inside src/domain/."
         )
     return violations
 
@@ -180,7 +194,10 @@ def _check_dangerous_call(node: ast.Call) -> list[str]:
         if node.func.id in DANGEROUS_BUILTINS:
             violations.append(
                 f"{node.func.id}() call at line {node.lineno} "
-                f"(forbidden dynamic execution in domain)"
+                f"(forbidden dynamic execution in domain). "
+                f"FIX: Remove the {node.func.id}() call. Domain code must use "
+                f"only static imports. If dynamic behavior is needed, implement it "
+                f"in src/infrastructure/ and inject via interface."
             )
 
     elif isinstance(node.func, ast.Attribute):
@@ -188,7 +205,9 @@ def _check_dangerous_call(node: ast.Call) -> list[str]:
             obj_name = _get_call_chain(node.func.value)
             violations.append(
                 f"{obj_name}.{node.func.attr}() call at line {node.lineno} "
-                f"(forbidden dynamic import in domain)"
+                f"(forbidden dynamic import in domain). "
+                f"FIX: Replace with a static import, or move this logic to "
+                f"src/infrastructure/ and expose it via a domain interface."
             )
 
     return violations

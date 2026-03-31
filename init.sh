@@ -126,12 +126,14 @@ echo "[init] Setting up configuration files..."
 if [ "$MODE" = "submodule" ]; then
     copy_if_missing "$HARNESS_DIR/harness.yaml" "harness.yaml"
     copy_if_missing "$HARNESS_DIR/AGENTS.md" "AGENTS.md"
-    copy_if_missing "$HARNESS_DIR/docs/exec-plans/progress.txt" "docs/exec-plans/progress.txt"
+    copy_if_missing "$HARNESS_DIR/docs/exec-plans/progress.md" "docs/exec-plans/progress.md"
     copy_if_missing "$HARNESS_DIR/docs/exec-plans/feature_list.json" "docs/exec-plans/feature_list.json"
     copy_if_missing "$HARNESS_DIR/docs/PLANS.md" "docs/PLANS.md"
     copy_if_missing "$HARNESS_DIR/docs/METRICS.md" "docs/METRICS.md"
+    copy_if_missing "$HARNESS_DIR/docs/QUALITY_SCORE.md" "docs/QUALITY_SCORE.md"
     copy_if_missing "$HARNESS_DIR/docs/ARCHITECTURE.md" "docs/ARCHITECTURE.md"
     copy_if_missing "$HARNESS_DIR/docs/design-docs/core-beliefs.md" "docs/design-docs/core-beliefs.md"
+    mkdir -p "docs/exec-plans/active" "docs/exec-plans/completed"
 else
     echo "  (standalone mode — files already in place)"
 fi

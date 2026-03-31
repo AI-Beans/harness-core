@@ -131,7 +131,15 @@ modules:
 
 ## 给 AI Agent 的说明
 
-`AGENTS.md` 是给 LLM Agent 阅读的"宪法"。将其加入 Agent 的系统提示词或 Cursor Rules 中，Agent 就会遵守框架的约束。
+`AGENTS.md` 是给 LLM Agent 阅读的**地图**（~70行），不是百科全书。它告诉 Agent "去哪里找"而非"所有细节"。
+
+核心设计原则（来自 [OpenAI Codex 团队的实践](https://openai.com/zh-Hans-CN/index/harness-engineering/)和 [Anthropic 长运行 Agent 研究](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents)）：
+
+- **会话协议**：每个 Agent 会话有明确的 Startup Checklist（读进度、选任务、验证环境）和 Shutdown Checklist（验证、提交、写进度）
+- **结构化特性列表**：`feature_list.json` 使用 JSON 格式的 pass/fail 状态跟踪，Agent 只能改 `passes` 字段，不能删除或修改描述
+- **渐进式披露**：Agent 从一个小而稳定的切入点（AGENTS.md）开始，被引导去查看更深层的文档
+- **执行计划**：`docs/exec-plans/active/` 和 `completed/` 分离活跃和已完成的计划
+- **质量评分**：`docs/QUALITY_SCORE.md` 对每个领域打分，追踪差距
 
 ## License
 

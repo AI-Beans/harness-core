@@ -139,6 +139,29 @@ Every `verify.sh` execution:
 
 All JSON generation uses Python's `json` module (no heredoc injection).
 
+Violation messages include actionable **FIX** instructions that are injected into the agent's context, enabling self-repair without consulting external documentation.
+
+## Knowledge Base Layout
+
+```
+docs/
+├── ARCHITECTURE.md            # This file — architecture laws & technical spec
+├── PLANS.md                   # Development roadmap
+├── METRICS.md                 # Telemetry dashboard
+├── QUALITY_SCORE.md           # Per-domain quality assessment (A-F grades)
+├── design-docs/
+│   ├── core-beliefs.md        # Foundational design principles
+│   └── ...                    # Feature-specific design docs
+├── exec-plans/
+│   ├── progress.md            # Session handoff log (append-only)
+│   ├── feature_list.json      # Structured features with pass/fail tracking
+│   ├── active/                # Current execution plans
+│   └── completed/             # Archived execution plans
+└── references/                # LLM-friendly reference material
+```
+
+**AGENTS.md** (~70 lines) serves as a map/table of contents pointing into this structure. It is NOT an encyclopedia — keep it short. Detailed rules live here and in sub-documents.
+
 ## Configuration Reference
 
 ```yaml

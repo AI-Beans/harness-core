@@ -1,4 +1,0 @@
-# Progress Log
-
-> Auto-updated by verify.sh after each run.
-> Format: ### YYYY-MM-DD HH:MM:SS - Task: <ID> - Dispatcher: microkernel
