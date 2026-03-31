@@ -84,6 +84,16 @@ for f in "${INIT_FILES[@]}"; do
     fi
 done
 
+# ===== Create seed test if tests/ is empty =====
+if [ -d "tests" ] && [ -z "$(find tests -name 'test_*.py' -type f 2>/dev/null)" ]; then
+    cat > tests/test_init.py << 'SEED'
+def test_harness_initialized():
+    """Seed test — replace with your real tests."""
+    assert True
+SEED
+    echo "  + tests/test_init.py (seed test)"
+fi
+
 # ===== Submodule mode: symlink .harness/ =====
 if [ "$MODE" = "submodule" ]; then
     RELATIVE_HARNESS="$(python3 -c "import os; print(os.path.relpath('$HARNESS_DIR/.harness', '$PROJECT_ROOT'))")"

@@ -46,8 +46,8 @@ STAGE_PATHS=(
 )
 
 for p in "${STAGE_PATHS[@]}"; do
-    if [ -e "$p" ]; then
-        git add "$p"
+    if [ -e "$p" ] && [ ! -L "$p" ]; then
+        git add "$p" 2>/dev/null || true
     fi
 done
 
