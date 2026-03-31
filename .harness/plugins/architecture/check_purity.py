@@ -82,10 +82,16 @@ def _resolve_relative_target(
         return None
 
 
+def _path_to_dotted(rel_path: str) -> str:
+    """Convert a filesystem path like 'src/domain' to dotted form 'src.domain'."""
+    return rel_path.replace("/", ".").replace("\\", ".").strip(".")
+
+
 def extract_violations(
     filepath: Path,
     domain_path: Path,
     project_root: Path,
+    domain_dotted: str | None = None,
 ) -> list[str]:
     """Extract import violations from a single Python file."""
     violations: list[str] = []
@@ -99,8 +105,20 @@ def extract_violations(
     except SyntaxError:
         return violations
 
-    domain_dotted = "src.domain"
-    forbidden_prefixes = ("src.infrastructure", "src.config", "src.presentation")
+    if domain_dotted is None:
+        try:
+            rel = domain_path.relative_to(project_root)
+            domain_dotted = _path_to_dotted(str(rel))
+        except ValueError:
+            domain_dotted = "src.domain"
+
+    top_package = domain_dotted.split(".")[0] if "." in domain_dotted else domain_dotted
+    forbidden_prefixes = tuple(
+        f"{top_package}.{layer}"
+        for layer in ("infrastructure", "config", "presentation")
+        if f"{top_package}.{layer}" != domain_dotted
+        and not domain_dotted.startswith(f"{top_package}.{layer}.")
+    )
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -225,6 +243,7 @@ def _get_call_chain(node: ast.expr) -> str:
 def check_domain_purity(
     domain_path: Path,
     project_root: Path,
+    domain_dotted: str | None = None,
 ) -> list[tuple[Path, str]]:
     """Check domain layer for impurity violations across ALL .py files."""
     violations: list[tuple[Path, str]] = []
@@ -232,8 +251,17 @@ def check_domain_purity(
     if not domain_path.exists():
         return violations
 
+    if domain_dotted is None:
+        try:
+            rel = domain_path.relative_to(project_root)
+            domain_dotted = _path_to_dotted(str(rel))
+        except ValueError:
+            domain_dotted = "src.domain"
+
     for py_file in domain_path.rglob("*.py"):
-        file_violations = extract_violations(py_file, domain_path, project_root)
+        file_violations = extract_violations(
+            py_file, domain_path, project_root, domain_dotted
+        )
         for desc in file_violations:
             violations.append((py_file, desc))
 

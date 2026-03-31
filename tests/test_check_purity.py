@@ -12,11 +12,10 @@ and runs the scanner against it.
 """
 
 import textwrap
+from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
 import pytest
-
-from importlib.util import spec_from_file_location, module_from_spec
 
 CHECKER_PATH = Path(__file__).parent.parent / ".harness" / "plugins" / "architecture" / "check_purity.py"
 

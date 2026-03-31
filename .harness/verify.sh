@@ -162,9 +162,10 @@ run_plugin() {
     fi
 
     if [ ! -f "$result_file" ]; then
-        python3 -c "
-import json, sys
-json.dump({'exit_code': $ec, 'error': 'no result file produced'}, sys.stdout)
+        PLUGIN_EC="$ec" python3 -c "
+import json, os, sys
+ec = int(os.environ.get('PLUGIN_EC', '1'))
+json.dump({'exit_code': ec, 'error': 'no result file produced'}, sys.stdout)
 " > "$result_file"
     fi
 }
