@@ -1,41 +1,5 @@
-# Progress Log - Self-Evolving AI Lab
+# Progress Log
 
-> This file is a template. Replace with your project's progress tracking.
-
-## Operation Trajectory
-
-### [Date] - Task: [Task-ID]
-| Metric | Value |
-|--------|-------|
-| Ruff Issues | - |
-| MyPy Issues | - |
-| Domain Purity | - |
-| Coverage | - |
-| Tests | - |
-| Commit | - |
-
----
-
-## Getting Started
-
-1. Initialize your project with `uv init` or similar
-2. Copy `.harness/` and `docs/` to your new project root
-3. Customize `progress.txt` and `feature_list.json` for your use case
-4. Run `bash .harness/verify.sh` to start the verification loop
-
-## Template Variables
-
-When starting a new project, replace:
-- `Self-Evolving AI Lab` → Your project name
-- `agent@self-evolving.ai` → Your git identity
-- Feature list tasks → Your project's specific tasks
-### 2026-03-31 14:55:16 - Task: Task-025 - Dispatcher: microkernel
-### 2026-03-31 14:57:35 - Task: Task-025 - Dispatcher: microkernel
-### 2026-03-31 14:59:07 - Task: Task-025 - Dispatcher: microkernel
-### 2026-03-31 15:00:16 - Task: Task-025 - Dispatcher: microkernel
-### 2026-03-31 15:06:22 - Task: Task-026 - Dispatcher: microkernel
-### 2026-03-31 15:13:08 - Task: Task-027 - Dispatcher: microkernel
-### 2026-03-31 15:30:29 - Task: Task-028 - Dispatcher: microkernel
-### 2026-03-31 15:48:03 - Task: Task-029 - Dispatcher: microkernel
-### 2026-03-31 08:35:35 - Task: AUDIT-FIX - Dispatcher: microkernel
-### 2026-03-31 08:37:09 - Task: AUDIT-FIX - Dispatcher: microkernel
+> Auto-updated by verify.sh after each run.
+> Format: ### YYYY-MM-DD HH:MM:SS - Task: <ID> - Dispatcher: microkernel
+### 2026-03-31 08:54:32 - Task: CLEAN - Dispatcher: microkernel

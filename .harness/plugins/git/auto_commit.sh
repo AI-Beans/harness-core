@@ -38,12 +38,10 @@ STAGE_PATHS=(
     "docs/"
     ".harness/"
     "harness.yaml"
-    "telemetry.json"
     "AGENTS.md"
     "README.md"
     "pyproject.toml"
     "requirements.txt"
-    "requirements-toolchain.txt"
 )
 
 for p in "${STAGE_PATHS[@]}"; do
