@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+PROJECT_ROOT="${HARNESS_PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
 cd "$PROJECT_ROOT"
 
 TELEMETRY_FILE="telemetry.json"
@@ -32,7 +32,24 @@ print(f'{passed}/{total} Pass [{ptype}/Microkernel]')
 
 COMMIT_MSG="chore(${TASK_ID}): Harness Verified: ${METRICS} @ ${TIMESTAMP}"
 
-git add -A
+STAGE_PATHS=(
+    "src/"
+    "tests/"
+    "docs/"
+    "harness.yaml"
+    "telemetry.json"
+    "AGENTS.md"
+    "README.md"
+    "pyproject.toml"
+    "requirements.txt"
+    "requirements-toolchain.txt"
+)
+
+for p in "${STAGE_PATHS[@]}"; do
+    if [ -e "$p" ]; then
+        git add "$p"
+    fi
+done
 
 set +e
 git diff --cached --quiet

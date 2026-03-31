@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+PROJECT_ROOT="${HARNESS_PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
 RESULT_FILE="${1:-}"
 
 cd "$PROJECT_ROOT"
@@ -10,13 +10,16 @@ if [ -d ".venv" ]; then
     source .venv/bin/activate
 fi
 
-echo "[Tests] Running pytest with coverage..."
+COV_TARGET="${HARNESS_SRC_PATHS:-src}"
+COV_THRESHOLD="${HARNESS_COVERAGE_THRESHOLD:-80}"
+
+echo "[Tests] Running pytest with coverage (threshold=${COV_THRESHOLD}%)..."
 
 OUTPUT_FILE=$(mktemp /tmp/pytest_output.XXXXXX)
 trap "rm -f '$OUTPUT_FILE'" RETURN
 
 set +e
-pytest --cov=src --cov-report=term-missing > "$OUTPUT_FILE" 2>&1
+pytest --cov="$COV_TARGET" --cov-report=term-missing > "$OUTPUT_FILE" 2>&1
 EXIT_CODE=$?
 set -e
 
@@ -29,7 +32,7 @@ fi
 cat "$OUTPUT_FILE"
 
 if [ -n "$RESULT_FILE" ]; then
-    EXIT_CODE=$EXIT_CODE python3 -c "
+    EXIT_CODE=$EXIT_CODE COV_THRESHOLD=$COV_THRESHOLD python3 -c "
 import json, os, re, sys
 
 output_file = sys.argv[1]
@@ -40,6 +43,7 @@ except Exception:
     output = ''
 
 exit_code = int(os.environ.get('EXIT_CODE', '1'))
+threshold = int(os.environ.get('COV_THRESHOLD', '80'))
 
 coverage = 0
 for line in output.split('\n'):
@@ -63,7 +67,6 @@ for match in re.finditer(r'(\d+)\s+failed', output):
     failed = int(match.group(1))
 
 status = 'pass' if exit_code == 0 else 'fail'
-threshold = 80
 
 data = {
     'exit_code': exit_code,

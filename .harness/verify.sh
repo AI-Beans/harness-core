@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="${HARNESS_PROJECT_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 TASK_ID="${1:-}"
 CONFIG_FILE="$PROJECT_ROOT/harness.yaml"
 PLUGINS_DIR="$SCRIPT_DIR/plugins"
@@ -13,17 +13,22 @@ echo "============================================"
 echo "  Microkernel Verification Dispatcher"
 echo "============================================"
 
+# ===== Pre-flight: python3 must exist =====
+if ! command -v python3 &>/dev/null; then
+    echo "FATAL: python3 not found on PATH — cannot parse config or run plugins"
+    exit 1
+fi
+
 # ===== Validate config =====
 if [ ! -f "$CONFIG_FILE" ]; then
-    echo "ERROR: harness.yaml not found at $CONFIG_FILE"
+    echo "FATAL: harness.yaml not found at $CONFIG_FILE"
     exit 1
 fi
 
 # ===== Parse harness.yaml into associative array =====
 declare -A CFG
-while IFS='=' read -r k v; do
-    [ -n "$k" ] && CFG["$k"]="$v"
-done < <(python3 -c "
+PARSE_OUTPUT=""
+PARSE_OUTPUT=$(python3 -c "
 import sys
 
 def parse_yaml(path):
@@ -43,6 +48,10 @@ def parse_yaml(path):
             key = key.strip()
             val = val.strip()
 
+            # Strip inline comments (DF-1)
+            if val and '#' in val:
+                val = val.split('#')[0].strip()
+
             if indent == 0:
                 in_modules = (key == 'modules')
                 current_module = None
@@ -60,13 +69,41 @@ def parse_yaml(path):
 cfg = parse_yaml(sys.argv[1])
 for k, v in cfg.items():
     print(f'{k}={v}')
-" "$CONFIG_FILE")
+" "$CONFIG_FILE" 2>&1) || {
+    echo "FATAL: Failed to parse harness.yaml — python3 inline parser exited non-zero"
+    echo "$PARSE_OUTPUT"
+    exit 1
+}
+
+while IFS='=' read -r k v; do
+    [ -n "$k" ] && CFG["$k"]="$v"
+done <<< "$PARSE_OUTPUT"
+
+# ===== Validate parsed config (CVE-H1 fix) =====
+if [ ${#CFG[@]} -eq 0 ]; then
+    echo "FATAL: harness.yaml parsed but produced zero config entries"
+    exit 1
+fi
 
 PROJECT_TYPE="${CFG[project_type]:-}"
+if [ -z "$PROJECT_TYPE" ]; then
+    echo "FATAL: project_type not found in harness.yaml"
+    exit 1
+fi
+
 export PROJECT_TYPE
 echo "  Config   : harness.yaml"
 echo "  Type     : $PROJECT_TYPE"
+echo "  Root     : $PROJECT_ROOT"
 echo ""
+
+# ===== Export configurable values for plugins (DF-3 / DF-5) =====
+export HARNESS_COVERAGE_THRESHOLD="${CFG[modules__tests__coverage_threshold]:-80}"
+export HARNESS_DOMAIN_PATH="${CFG[paths__domain]:-src/domain}"
+export HARNESS_SRC_PATHS="${CFG[paths__src]:-src}"
+export HARNESS_TEST_PATHS="${CFG[paths__tests]:-tests}"
+
+PLUGIN_TIMEOUT="${CFG[plugin_timeout]:-300}"
 
 # ===== Bootstrap environment =====
 if [ "$PROJECT_TYPE" = "python" ]; then
@@ -90,7 +127,9 @@ RESULT_DIR=$(mktemp -d)
 trap 'rm -rf "$RESULT_DIR"' EXIT
 export RESULT_DIR TASK_ID
 
-# ===== Plugin execution function =====
+PLUGINS_RAN=0
+
+# ===== Plugin execution function (with timeout — DF-4) =====
 run_plugin() {
     local name="$1"
     local script="$2"
@@ -102,14 +141,19 @@ run_plugin() {
 
     set +e
     if [[ "$script" == *.py ]]; then
-        python3 "$script" "$result_file" 2>&1
+        timeout "$PLUGIN_TIMEOUT" python3 "$script" "$result_file" 2>&1
     else
-        bash "$script" "$result_file" 2>&1
+        timeout "$PLUGIN_TIMEOUT" bash "$script" "$result_file" 2>&1
     fi
     local ec=$?
     set -e
 
+    if [ "$ec" -eq 124 ]; then
+        echo "  ✗ $name: TIMEOUT (exceeded ${PLUGIN_TIMEOUT}s)"
+    fi
+
     echo "$ec" > "$exit_file"
+    PLUGINS_RAN=$((PLUGINS_RAN + 1))
 
     if [ "$ec" -eq 0 ]; then
         echo "  ✓ $name: PASSED"
@@ -144,12 +188,22 @@ if [ "$PROJECT_TYPE" = "python" ]; then
         run_plugin "tests" "$PLUGINS_DIR/python/run_tests.sh"
     fi
 else
-    echo "  ⚠ Unsupported project_type: '$PROJECT_TYPE' - no plugins dispatched"
+    echo "  FATAL: Unsupported project_type: '$PROJECT_TYPE'"
+    exit 1
+fi
+
+# ===== Guard: at least one plugin must have run (CVE-H1 fix) =====
+if [ "$PLUGINS_RAN" -eq 0 ]; then
+    echo "FATAL: No plugins were dispatched — all modules disabled in harness.yaml?"
+    exit 1
 fi
 
 # ===== Generate telemetry.json (Python json module - no heredoc) =====
 echo ""
 echo "Generating telemetry.json..."
+
+TELEMETRY_HISTORY="${PROJECT_ROOT}/.telemetry_history.json"
+export TELEMETRY_HISTORY
 
 python3 << 'TELEGEN'
 import json
@@ -160,6 +214,9 @@ from datetime import datetime, timezone
 result_dir = os.environ["RESULT_DIR"]
 task_id = os.environ.get("TASK_ID", "") or None
 project_type = os.environ.get("PROJECT_TYPE", "unknown")
+history_path = os.environ.get("TELEMETRY_HISTORY", ".telemetry_history.json")
+src_paths = os.environ.get("HARNESS_SRC_PATHS", "src")
+test_paths = os.environ.get("HARNESS_TEST_PATHS", "tests")
 
 
 def read_result(name):
@@ -171,19 +228,10 @@ def read_result(name):
         return {"exit_code": -1, "error": "result not found"}
 
 
-def read_exit(name):
-    path = os.path.join(result_dir, f"{name}.exit")
-    try:
-        with open(path) as f:
-            return int(f.read().strip())
-    except Exception:
-        return -1
-
-
-def safe_count(*find_args):
+def safe_count(directory, pattern):
     try:
         r = subprocess.run(
-            ["find"] + list(find_args) + ["-type", "f"],
+            ["find", directory, "-name", pattern, "-type", "f"],
             capture_output=True, text=True, timeout=10
         )
         lines = [l for l in r.stdout.strip().split("\n") if l]
@@ -212,7 +260,7 @@ def safe_line_count(*dirs):
     return total
 
 
-telemetry = {
+entry = {
     "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "task_id": task_id,
     "project_type": project_type,
@@ -223,17 +271,36 @@ telemetry = {
         "tests": read_result("tests"),
     },
     "complexity": {
-        "src_files": safe_count("src", "-name", "*.py"),
-        "test_files": safe_count("tests", "-name", "test_*.py"),
-        "total_lines": safe_line_count("src", "tests"),
+        "src_files": safe_count(src_paths, "*.py"),
+        "test_files": safe_count(test_paths, "test_*.py"),
+        "total_lines": safe_line_count(src_paths, test_paths),
     },
 }
 
 with open("telemetry.json", "w") as f:
-    json.dump(telemetry, f, indent=2)
+    json.dump(entry, f, indent=2)
+    f.write("\n")
+
+# Append to history (AF-2 fix)
+history = []
+try:
+    with open(history_path) as f:
+        history = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    pass
+
+history.append(entry)
+
+MAX_HISTORY = 100
+if len(history) > MAX_HISTORY:
+    history = history[-MAX_HISTORY:]
+
+with open(history_path, "w") as f:
+    json.dump(history, f, indent=2)
     f.write("\n")
 
 print("  ✓ telemetry.json generated")
+print(f"  ✓ history appended ({len(history)} entries in {history_path})")
 TELEGEN
 
 echo ""

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+PROJECT_ROOT="${HARNESS_PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
 RESULT_FILE="${1:-}"
 
 cd "$PROJECT_ROOT"
@@ -10,13 +10,15 @@ if [ -d ".venv" ]; then
     source .venv/bin/activate
 fi
 
-echo "[TypeChecker] Running mypy on src/..."
+SRC_PATHS="${HARNESS_SRC_PATHS:-src}"
+
+echo "[TypeChecker] Running mypy on ${SRC_PATHS}/..."
 
 OUTPUT_FILE=$(mktemp /tmp/mypy_output.XXXXXX)
 trap "rm -f '$OUTPUT_FILE'" RETURN
 
 set +e
-mypy src/ > "$OUTPUT_FILE" 2>&1
+mypy "$SRC_PATHS"/ > "$OUTPUT_FILE" 2>&1
 EXIT_CODE=$?
 set -e
 
