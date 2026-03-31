@@ -1,287 +1,157 @@
 # harness-core
 
-> **The Agent-Native Workspace Framework**
+> **KKD Agent-Native Standard (KKD-ANS) v2.0**
 >
-> Based on OpenAI 2026's *System of Record* & *Mechanical Taste* paradigms.
-
----
+> Microkernel architecture for agent-driven development — configuration-driven, plugin-based, zero-inference verification.
 
 ## What is harness-core?
 
-harness-core is the **extracted OS (Operating System) layer** of a self-evolving AI development system. It provides the foundational infrastructure for building **Agent-Native workspaces** — environments where AI agents can autonomously write, test, verify, and evolve code with zero human intervention.
+harness-core is a **microkernel-style verification framework** for AI agent workspaces. It provides the foundational infrastructure for environments where AI agents autonomously write, test, verify, and evolve code.
 
-Think of it as the **kernel** for your AI development pipeline. It doesn't care *what* you build — it only cares *how* you build it: with rigor, observability, and autonomous quality enforcement.
+The system is built on a single principle: **`verify.sh` is the sole judge**. No human review, no guessing — only automated, reproducible, telemetry-backed verification.
 
----
-
-## Core Philosophy
-
-### The 5 Laws of harness-core
-
-| Law | Name | Description |
-|-----|------|-------------|
-| **Law 1** | Physical Isolation | `.harness/` is NOT application code — it's the OS layer |
-| **Law 2** | No Manual Code Writing | AI writes all production code; humans don't touch business logic |
-| **Law 3** | Configuration as DNA | All behavior externalized to `config/` — no magic constants |
-| **Law 4** | Domain Purity | `src/domain/` is pure business logic — zero I/O, zero infrastructure deps |
-| **Law 5** | Telemetry & Observability | Every verification run emits metrics; nothing is silent |
-
-### The System of Record
-
-Inspired by OpenAI 2026's concept, harness-core treats **verification as ground truth**:
+## Architecture
 
 ```
-Code → Verify → Telemetry → Decision → Evolution
+                    harness.yaml
+                   (Configuration Hub)
+                         │
+                         ▼
+                    verify.sh
+                   (Dispatcher)
+          ┌────────┼────────┼────────┐
+          ▼        ▼        ▼        ▼
+       ruff      mypy    pytest   check_purity
+       (lint)   (types)  (test)   (domain AST)
 ```
 
-The `.harness/verify.sh` script is the **system of record**. It:
-1. Runs linting ([YOUR_LINTER])
-2. Runs type checking ([YOUR_TYPE_CHECKER])
-3. Enforces domain purity (via language-specific plugin)
-4. Runs tests with coverage ([YOUR_TEST_RUNNER])
-5. Emits `telemetry.json` — the single source of truth for system health
-
-### Mechanical Taste
-
-harness-core acknowledges that **not everything can be enforced by tools**. The concept of *Mechanical Taste* represents the gap between what machines can verify and what AI agents must self-regulate:
-
-- Tooling can catch unused imports, but not *semantic* imports in domain layer
-- Tooling can measure coverage, but not *meaningful* coverage
-- Tooling can run tests, but not judge if tests are well-designed
-
-**Mechanical Taste** is the AI exercising judgment in areas tools cannot reach.
-
----
+The dispatcher reads `harness.yaml`, bootstraps a virtual environment, runs each enabled plugin, generates `telemetry.json`, and auto-commits on all-pass.
 
 ## Directory Structure
 
 ```
 harness-core/
-├── .harness/              # The OS layer (DO NOT import from src/)
-│   ├── verify.sh          # Verification gate + telemetry emitter (template)
-│   └── check_purity.py    # Reference Plugin (Python example for Law 4)
-├── docs/
-│   ├── ARCHITECTURE.md     # System architecture documentation
-│   ├── PLANS.md           # Development roadmap template
-│   ├── QUALITY_SCORE.md   # Quality metrics and thresholds
-│   ├── RELIABILITY.md     # Resilience and fault-tolerance patterns
-│   ├── design-docs/
-│   │   └── core-beliefs.md # The 9 Core Beliefs + Mechanical Taste
-│   ├── exec-plans/
-│   │   ├── progress.txt   # TEMPLATE: Activity log
-│   │   └── feature_list.json  # TEMPLATE: Task backlog
-│   └── references/       # Toolchain specifications (future)
-└── AGENTS.md              # Agent guidelines and command reference
+├── harness.yaml                       # Microkernel config (project_type, module switches)
+├── AGENTS.md                          # Agent protocol (read FIRST)
+├── .harness/
+│   ├── verify.sh                      # Dispatcher: YAML → plugins → telemetry
+│   └── plugins/
+│       ├── python/
+│       │   ├── setup_env.sh           # .venv bootstrap (uv / venv fallback)
+│       │   ├── run_linter.sh          # ruff
+│       │   ├── run_typecheck.sh       # mypy
+│       │   └── run_tests.sh           # pytest + coverage
+│       ├── architecture/
+│       │   └── check_purity.py        # Domain purity AST scanner
+│       └── git/
+│           └── auto_commit.sh         # Auto-commit on green
+├── src/
+│   ├── domain/                        # Pure business logic (Law 4)
+│   ├── infrastructure/                # I/O, adapters
+│   └── config/                        # Settings
+├── tests/                             # Test files
+└── docs/
+    ├── ARCHITECTURE.md                # Architecture laws & plugin protocol
+    ├── METRICS.md                     # Telemetry trend dashboard
+    ├── PLANS.md                       # Development roadmap
+    ├── design-docs/core-beliefs.md    # Foundational beliefs
+    └── exec-plans/                    # Progress & feature backlog
 ```
 
----
+## The 5 Architecture Laws
+
+| Law | Name | Description |
+|-----|------|-------------|
+| **Law 1** | Isolation | `src/` and `.harness/` are strictly separated |
+| **Law 2** | AI-Generated | All production code is AI-written |
+| **Law 3** | Configuration | `harness.yaml` is the single source of truth |
+| **Law 4** | Domain Purity | `src/domain/` — zero I/O, zero infra deps |
+| **Law 5** | Telemetry | Every run emits `telemetry.json` via `json.dump()` |
 
 ## Quick Start
 
-### 1. Bootstrap a new project
-
 ```bash
-# Create your project directory
-mkdir my-agent-workspace && cd my-agent-workspace
+# 1. Clone
+git clone <repo> && cd harness-core
 
-# Copy the harness-core OS layer
-cp -r /path/to/harness-core/.harness .
-cp -r /path/to/harness-core/docs .
-
-# Copy constitution files
-cp /path/to/harness-core/AGENTS.md .
-cp /path/to/harness-core/docs/ARCHITECTURE.md .
-```
-
-### 2. Initialize your language stack
-
-**Python:**
-```bash
-uv init --src src --tests tests
-uv add [YOUR_LINTER] [YOUR_TYPE_CHECKER] [YOUR_TEST_RUNNER] [COVERAGE_TOOL]
-```
-
-**Node.js/TypeScript:**
-```bash
-npm init
-npm install --save-dev [YOUR_LINTER] [YOUR_TYPE_CHECKER] [YOUR_TEST_RUNNER]
-```
-
-**Go:**
-```bash
-go mod init my-project
-go get [LINTER] [TYPE_CHECKER] [TEST_FRAMEWORK]
-```
-
-### 3. Configure your verification gate
-
-Edit `.harness/verify.sh` to match your stack. Replace the placeholder regions:
-
-```bash
-# ==== LINTER SECTION ====
-LINTER_OUTPUT=$([YOUR_LINTER] . 2>&1)
-
-# ==== TYPE CHECKER SECTION ====
-TYPECHECK_OUTPUT=$([YOUR_TYPE_CHECKER] 2>&1)
-
-# ==== TEST RUNNER SECTION ====
-TEST_OUTPUT=$([YOUR_TEST_RUNNER] --coverage 2>&1)
-```
-
-### 4. Implement Domain Purity Check (Law 4)
-
-**For Python projects:** Uncomment the domain purity section in `verify.sh` and use `check_purity.py`.
-
-**For other languages:** Implement equivalent enforcement via your linter:
-- TypeScript/ESLint: Write a custom rule for `no-restricted-imports` in domain
-- Go: Use a custom linter plugin
-- Rust: Use clippy restrictions
-
-### 5. Initialize git and start the loop
-
-```bash
-git init
-git config user.name "agent"
-git config user.email "agent@your-workspace.ai"
+# 2. Run verification (auto-creates .venv, installs tools, runs all checks)
 bash .harness/verify.sh
+
+# 3. If all green → automatic git commit with telemetry summary
 ```
 
-If all checks pass → you get an automatic commit with telemetry.
+No manual setup required. The `setup_env.sh` plugin auto-detects `uv` (preferred) or falls back to `python3 -m venv`.
 
----
+## Configuration
+
+Edit `harness.yaml` to control which modules run:
+
+```yaml
+version: 1.0
+project_type: python
+
+modules:
+  linter:
+    enabled: true       # set false to skip
+    plugin: ruff
+  type_checker:
+    enabled: true
+    plugin: mypy
+  tests:
+    enabled: true
+  domain_purity:
+    enabled: true
+```
 
 ## The Autonomous Loop
 
-Once bootstrapped, your workspace runs this loop:
-
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     AUTONOMOUS LOOP                          │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│   1. TASK IDENTIFICATION                                    │
-│      └─ Agent reads feature_list.json, selects next task    │
-│                                                             │
-│   2. CODE GENERATION                                        │
-│      └─ AI writes production code in src/                   │
-│      └─ AI writes tests in tests/                           │
-│                                                             │
-│   3. VERIFICATION (verify.sh)                                │
-│      └─ [YOUR_LINTER]: 0 issues                             │
-│      └─ [YOUR_TYPE_CHECKER]: 0 issues                       │
-│      └─ [YOUR_TEST_RUNNER]: all pass, coverage ≥ threshold │
-│      └─ Domain purity: enforced (via language plugin)       │
-│                                                             │
-│   4. TELEMETRY                                              │
-│      └─ telemetry.json updated with run metrics             │
-│      └─ Progress logged to progress.txt                     │
-│                                                             │
-│   5. DECISION                                                │
-│      └─ If all green → auto-commit                         │
-│      └─ If failures → analyze, fix, retry                   │
-│                                                             │
+│  1. READ     harness.yaml → identify enabled modules        │
+│  2. BOOTSTRAP setup_env.sh → .venv with toolchain           │
+│  3. DISPATCH plugins in order → capture exit codes           │
+│  4. TELEMETRY telemetry.json via json.dump()                 │
+│  5. DECIDE   all green → auto_commit.sh                      │
+│              any red  → report failures, abort               │
 └─────────────────────────────────────────────────────────────┘
 ```
 
----
+## Telemetry
 
-## The 9 Core Beliefs
-
-1. **Autonomy First** — No human in the loop
-2. **Verification Before Creation** — Gates before merge
-3. **Fail Fast, Recover Faster** — Detect, log, adapt
-4. **Everything is Trackable** — No silent changes
-5. **Incremental Evolution** — Atomic, verifiable tasks
-6. **Language-Agnostic Core** — Right tool for the job
-7. **Zero Tolerance for Code Pollution** — Strict standards
-8. **Mechanical Taste** — Self-regulation beyond tooling
-9. **Resilience Evolution** — Adapt to environmental uncertainty
-
----
-
-## Quality Gates (Template)
-
-| Gate | Tool | Threshold |
-|------|------|-----------|
-| Linting | [YOUR_LINTER] | 0 issues |
-| Type Checking | [YOUR_TYPE_CHECKER] | 0 issues |
-| Domain Purity | [LANGUAGE_PLUGIN] | pass |
-| Test Coverage | [YOUR_TEST_RUNNER] | ≥ [THRESHOLD]% |
-| All Tests | [YOUR_TEST_RUNNER] | 100% pass |
-
----
-
-## Telemetry Schema
-
-Every `verify.sh` run emits `telemetry.json`:
+Every run generates `telemetry.json`:
 
 ```json
 {
-  "timestamp": "2026-03-31T12:00:00Z",
-  "task_id": "task-001",
+  "timestamp": "2026-03-31T07:13:08Z",
+  "task_id": "Task-027",
+  "project_type": "python",
   "metrics": {
-    "linter": { "issues": 0, "tool": "[YOUR_LINTER]" },
-    "type_checker": { "issues": 0, "tool": "[YOUR_TYPE_CHECKER]" },
-    "domain_purity": { "issues": 0 },
-    "coverage": { "percentage": 91.5, "threshold": 80 },
-    "tests": { "passed": 62, "failed": 0 }
+    "linter": { "exit_code": 0, "issues": 0, "tool": "ruff" },
+    "type_checker": { "exit_code": 0, "issues": 0, "tool": "mypy" },
+    "domain_purity": { "exit_code": 0, "issues": 0, "files_scanned": 1 },
+    "tests": { "exit_code": 0, "passed": 1, "failed": 0, "coverage": { "percentage": 100 } }
   },
-  "complexity": { "src_files": 31, "total_lines": 1459 }
+  "complexity": { "src_files": 4, "test_files": 1, "total_lines": 2 }
 }
 ```
 
-This becomes your **system of record** — the truth about your codebase's health.
+## Adding Plugins
 
----
+1. Create script in `.harness/plugins/<category>/`
+2. Follow the plugin protocol: exit 0/non-zero, optional JSON result file
+3. Register in `harness.yaml` under `modules`
+4. Add dispatch logic in `verify.sh`
 
-## Reference Plugin: check_purity.py
+## Quality Gates
 
-`.harness/check_purity.py` is provided as a **reference implementation** demonstrating Law 4 (Domain Purity) enforcement for Python projects. It parses Python AST to ensure `src/domain/` imports only stdlib modules.
-
-**For non-Python projects:** Implement equivalent domain purity checks using your language's linter plugin system. The principle remains constant: domain layer must contain zero imports from infrastructure or config layers.
-
----
-
-## Extending harness-core
-
-### Adding a new language
-
-1. Update `.harness/verify.sh` with the new linter/type-checker/test runner
-2. Implement domain purity enforcement via linter plugin
-3. Document in `docs/references/`
-
-### Custom quality metrics
-
-1. Edit `docs/QUALITY_SCORE.md` with new thresholds
-2. Update `.harness/verify.sh` to emit new metrics
-3. Add to `telemetry.json` schema
-
-### Resilience patterns
-
-See `docs/RELIABILITY.md` for circuit breaker patterns and fault injection strategies.
-
----
-
-## The Seed
-
-harness-core is designed to be **cloned, not referenced**. It is the **seed** from which new agent-native workspaces germinate.
-
-```
-git clone <your-harness-core-fork>
-cp -r harness-core/.harness your-new-project/
-cp -r harness-core/docs your-new-project/
-# ... customize for your domain ...
-bash your-new-project/.harness/verify.sh
-```
-
-Every workspace is independent, but all share the same **OS layer** — the unchanging foundation of autonomous development.
-
----
+| Gate | Tool | Threshold |
+|------|------|-----------|
+| Linting | ruff | 0 issues |
+| Type Checking | mypy | 0 issues |
+| Domain Purity | check_purity.py (AST) | pass |
+| Test Coverage | pytest-cov | >= 80% |
+| All Tests | pytest | 100% pass |
 
 ## License
 
-MIT — Clone freely, evolve relentlessly.
-
----
-
-**"The best infrastructure is the one you never have to think about."**
+MIT
