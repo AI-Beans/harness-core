@@ -65,9 +65,15 @@ def _resolve_relative_target(
     domain_path: Path,
     level: int,
 ) -> Path | None:
-    """Resolve the directory a relative import points to based on level."""
+    """Resolve the directory a relative import points to based on level.
+
+    In Python's import system:
+      level=1 (from . import X)   → current package = filepath.parent
+      level=2 (from .. import X)  → parent package  = filepath.parent.parent
+      level=N                     → go up (N-1) dirs from filepath.parent
+    """
     base = filepath.parent
-    for _ in range(level):
+    for _ in range(level - 1):
         base = base.parent
     try:
         base.relative_to(domain_path)
