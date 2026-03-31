@@ -133,6 +133,7 @@ if [ "$MODE" = "submodule" ]; then
     copy_if_missing "$HARNESS_DIR/docs/QUALITY_SCORE.md" "docs/QUALITY_SCORE.md"
     copy_if_missing "$HARNESS_DIR/docs/ARCHITECTURE.md" "docs/ARCHITECTURE.md"
     copy_if_missing "$HARNESS_DIR/docs/design-docs/core-beliefs.md" "docs/design-docs/core-beliefs.md"
+    copy_if_missing "$HARNESS_DIR/pyproject.toml" "pyproject.toml"
     mkdir -p "docs/exec-plans/active" "docs/exec-plans/completed"
 else
     echo "  (standalone mode — files already in place)"
