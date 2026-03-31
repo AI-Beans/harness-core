@@ -1,156 +1,137 @@
 # harness-core
 
-> **KKD Agent-Native Standard (KKD-ANS) v2.0**
->
-> Microkernel architecture for agent-driven development — configuration-driven, plugin-based, zero-inference verification.
+> Agent Governance Framework — 让 AI Agent 在流水线上当标准工人，而不是法外狂徒。
 
-## What is harness-core?
+## 它是什么
 
-harness-core is a **microkernel-style verification framework** for AI agent workspaces. It provides the foundational infrastructure for environments where AI agents autonomously write, test, verify, and evolve code.
-
-The system is built on a single principle: **`verify.sh` is the sole judge**. No human review, no guessing — only automated, reproducible, telemetry-backed verification.
-
-## Architecture
+harness-core 是一个**微内核式验证框架**，通过配置文件 (`harness.yaml`)、物理门禁 (`verify.sh`) 和领域纯度扫描 (`check_purity.py`)，对 LLM Agent 的代码输出进行强制性的架构约束和质量拦截。
 
 ```
                     harness.yaml
-                   (Configuration Hub)
+                   (配置中心)
                          │
                          ▼
                     verify.sh
-                   (Dispatcher)
+                   (调度器)
           ┌────────┼────────┼────────┐
           ▼        ▼        ▼        ▼
        ruff      mypy    pytest   check_purity
        (lint)   (types)  (test)   (domain AST)
 ```
 
-The dispatcher reads `harness.yaml`, bootstraps a virtual environment, runs each enabled plugin, generates `telemetry.json`, and auto-commits on all-pass.
+## 30 秒上手
 
-## Directory Structure
-
-```
-harness-core/
-├── harness.yaml                       # Microkernel config (project_type, module switches)
-├── AGENTS.md                          # Agent protocol (read FIRST)
-├── .harness/
-│   ├── verify.sh                      # Dispatcher: YAML → plugins → telemetry
-│   └── plugins/
-│       ├── python/
-│       │   ├── setup_env.sh           # .venv bootstrap (uv / venv fallback)
-│       │   ├── run_linter.sh          # ruff
-│       │   ├── run_typecheck.sh       # mypy
-│       │   └── run_tests.sh           # pytest + coverage
-│       ├── architecture/
-│       │   └── check_purity.py        # Domain purity AST scanner
-│       └── git/
-│           └── auto_commit.sh         # Auto-commit on green
-├── src/
-│   ├── domain/                        # Pure business logic (Law 4)
-│   ├── infrastructure/                # I/O, adapters
-│   └── config/                        # Settings
-├── tests/                             # Test files
-└── docs/
-    ├── ARCHITECTURE.md                # Architecture laws & plugin protocol
-    ├── METRICS.md                     # Telemetry trend dashboard
-    ├── PLANS.md                       # Development roadmap
-    ├── design-docs/core-beliefs.md    # Foundational beliefs
-    └── exec-plans/                    # Progress & feature backlog
-```
-
-## The 5 Architecture Laws
-
-| Law | Name | Description |
-|-----|------|-------------|
-| **Law 1** | Isolation | `src/` and `.harness/` are strictly separated |
-| **Law 2** | AI-Generated | All production code is AI-written |
-| **Law 3** | Configuration | `harness.yaml` is the single source of truth |
-| **Law 4** | Domain Purity | `src/domain/` — only stdlib + `src.domain.*` imports allowed |
-| **Law 5** | Telemetry | Every run emits `telemetry.json` via `json.dump()` |
-
-## Quick Start
+### 方式一：直接 Clone（独立项目）
 
 ```bash
-# 1. Clone
-git clone <repo> && cd harness-core
-
-# 2. Run verification (auto-creates .venv, installs tools, runs all checks)
-bash .harness/verify.sh
-
-# 3. If all green → automatic git commit with telemetry summary
+git clone https://github.com/AI-Beans/harness-core.git my-project
+cd my-project
+bash init.sh
 ```
 
-No manual setup required. The `setup_env.sh` plugin auto-detects `uv` (preferred) or falls back to `python3 -m venv`.
+### 方式二：作为 Git Submodule（嵌入现有项目）
 
-## Configuration
+```bash
+cd your-project
+git submodule add https://github.com/AI-Beans/harness-core.git .harness-core
+bash .harness-core/init.sh
+```
 
-Edit `harness.yaml` to control which modules run:
+`init.sh` 会自动：
+- 创建 `src/{domain,infrastructure,config}/`、`tests/`、`docs/` 目录结构
+- 生成 `__init__.py` 文件
+- 复制 `harness.yaml`、`AGENTS.md` 等配置到项目根目录
+- Submodule 模式下自动创建 `.harness/` 符号链接
+- 补全 `.gitignore`
+- 运行一次 `verify.sh` 验证环境
+
+### 方式三：手动（最小化）
+
+只需要 `.harness/` 目录和 `harness.yaml` 即可工作：
+
+```bash
+cp -r harness-core/.harness .harness
+cp harness-core/harness.yaml harness.yaml
+bash .harness/verify.sh
+```
+
+## 日常使用
+
+```bash
+# 运行全量验证（自动创建 .venv、安装工具链、执行所有检查）
+bash .harness/verify.sh
+
+# 带 Task ID（记录到遥测和进度文件）
+bash .harness/verify.sh TASK-001
+
+# 单独运行某个插件
+bash .harness/plugins/python/run_linter.sh
+bash .harness/plugins/python/run_typecheck.sh
+bash .harness/plugins/python/run_tests.sh
+python3 .harness/plugins/architecture/check_purity.py
+```
+
+## 配置
+
+`harness.yaml` 是唯一的配置入口：
 
 ```yaml
 version: 1.0
 project_type: python
 
+plugin_timeout: 300           # 每个插件的超时时间（秒）
+
+paths:
+  domain: src/domain          # 领域纯度扫描目标
+  src: src                    # mypy + coverage 目标
+  tests: tests                # 测试发现根目录
+
 modules:
   linter:
-    enabled: true       # set false to skip
+    enabled: true
     plugin: ruff
   type_checker:
     enabled: true
     plugin: mypy
   tests:
     enabled: true
+    coverage_threshold: 80    # 最低覆盖率
   domain_purity:
     enabled: true
 ```
 
-## The Autonomous Loop
+## 五条架构法则
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  1. READ     harness.yaml → identify enabled modules        │
-│  2. BOOTSTRAP setup_env.sh → .venv with toolchain           │
-│  3. DISPATCH plugins in order → capture exit codes           │
-│  4. TELEMETRY telemetry.json via json.dump()                 │
-│  5. DECIDE   all green → auto_commit.sh                      │
-│              any red  → report failures, abort               │
-└─────────────────────────────────────────────────────────────┘
-```
+| 法则 | 名称 | 含义 |
+|------|------|------|
+| **Law 1** | 隔离 | `src/` 和 `.harness/` 严格分离 |
+| **Law 2** | 零推断验证 | `verify.sh` 是唯一裁判，失败则自修（最多 5 次） |
+| **Law 3** | 配置驱动 | `harness.yaml` 是唯一真相源，无魔法常量 |
+| **Law 4** | 领域纯度 | `src/domain/` 只允许 stdlib + `src.domain.*` |
+| **Law 5** | 可观测性 | 每次运行生成 `telemetry.json` + 追加历史 |
 
-## Telemetry
+## 领域纯度扫描
 
-Every run generates `telemetry.json`:
+`check_purity.py` 使用 AST 分析检测：
 
-```json
-{
-  "timestamp": "2026-03-31T07:13:08Z",
-  "task_id": "Task-027",
-  "project_type": "python",
-  "metrics": {
-    "linter": { "exit_code": 0, "issues": 0, "tool": "ruff" },
-    "type_checker": { "exit_code": 0, "issues": 0, "tool": "mypy" },
-    "domain_purity": { "exit_code": 0, "issues": 0, "files_scanned": 1 },
-    "tests": { "exit_code": 0, "passed": 1, "failed": 0, "coverage": { "percentage": 100 } }
-  },
-  "complexity": { "src_files": 4, "test_files": 1, "total_lines": 2 }
-}
-```
+- **静态导入**：`import X` / `from X import Y`
+- **动态导入**：`__import__()`、`exec()`、`eval()`、`compile()`
+- **importlib 调用**：`importlib.import_module()`
+- **越界相对导入**：`from .. import infrastructure`
 
-## Adding Plugins
+## 质量门禁
 
-1. Create script in `.harness/plugins/<category>/`
-2. Follow the plugin protocol: exit 0/non-zero, optional JSON result file
-3. Register in `harness.yaml` under `modules`
-4. Add dispatch logic in `verify.sh`
-
-## Quality Gates
-
-| Gate | Tool | Threshold |
-|------|------|-----------|
+| 门禁 | 工具 | 阈值 |
+|------|------|------|
 | Linting | ruff | 0 issues |
 | Type Checking | mypy | 0 issues |
-| Domain Purity | check_purity.py (AST) | pass |
-| Test Coverage | pytest-cov | >= 80% |
+| Domain Purity | check_purity.py | 0 violations |
+| Test Coverage | pytest-cov | >= harness.yaml 中配置的阈值 |
 | All Tests | pytest | 100% pass |
+
+## 给 AI Agent 的说明
+
+`AGENTS.md` 是给 LLM Agent 阅读的"宪法"。将其加入 Agent 的系统提示词或 Cursor Rules 中，Agent 就会遵守框架的约束。
 
 ## License
 

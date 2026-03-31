@@ -38,17 +38,16 @@ STAGE_PATHS=(
     "docs/"
     ".harness/"
     "harness.yaml"
-    "telemetry.json"
     "AGENTS.md"
     "README.md"
+    "init.sh"
     "pyproject.toml"
     "requirements.txt"
-    "requirements-toolchain.txt"
 )
 
 for p in "${STAGE_PATHS[@]}"; do
-    if [ -e "$p" ]; then
-        git add "$p"
+    if [ -e "$p" ] && [ ! -L "$p" ]; then
+        git add "$p" 2>/dev/null || true
     fi
 done
 

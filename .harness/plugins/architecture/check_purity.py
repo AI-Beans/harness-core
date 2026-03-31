@@ -222,8 +222,12 @@ def check_domain_purity(
 
 
 def main() -> int:
-    script_dir = Path(__file__).parent.resolve()
-    project_root = script_dir.parent.parent.parent
+    env_root = os.environ.get("HARNESS_PROJECT_ROOT")
+    if env_root:
+        project_root = Path(env_root).resolve()
+    else:
+        script_dir = Path(__file__).parent.resolve()
+        project_root = script_dir.parent.parent.parent
 
     domain_rel = os.environ.get("HARNESS_DOMAIN_PATH", "src/domain")
     domain_path = project_root / domain_rel
