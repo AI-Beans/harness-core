@@ -40,6 +40,7 @@ STAGE_PATHS=(
     "harness.yaml"
     "AGENTS.md"
     "README.md"
+    "init.sh"
     "pyproject.toml"
     "requirements.txt"
 )
