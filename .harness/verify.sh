@@ -1,220 +1,278 @@
 #!/bin/bash
-# Code Quality Verification Gate (Language-Agnostic Template)
-#
-# This script is a TEMPLATE. Replace placeholder regions with your stack's
-# actual commands. The telemetry JSON structure and auto-commit logic
-# remain constant across all languages.
-#
-# ==== PLACEHOLDER REGIONS ====
-# Replace:
-#   [YOUR_LINTER]         → ruff, eslint, golangci-lint, rustfmt, etc.
-#   [YOUR_TYPE_CHECKER]   → mypy, tsc, go vet, rustc --emit=metadata, etc.
-#   [YOUR_TEST_RUNNER]    → pytest, jest, go test, cargo test, etc.
-#   [COVERAGE_CMD]        → pytest --cov, jest --coverage, etc.
-#   [DOMAIN_CHECK]        → python3 .harness/check_purity.py, or removed
-# ==== PLACEHOLDER REGIONS ====
-
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TASK_ID="${1:-}"
+CONFIG_FILE="$PROJECT_ROOT/harness.yaml"
+PLUGINS_DIR="$SCRIPT_DIR/plugins"
 
 cd "$PROJECT_ROOT"
 
 echo "============================================"
-echo "  Code Quality Verification Gate"
+echo "  Microkernel Verification Dispatcher"
 echo "============================================"
-echo ""
 
-# ==== LINTER SECTION ====
-# Replace this placeholder with your language's linter
-# Example: Linter for Python
-#   LINTER_OUTPUT=$([YOUR_LINTER] check . 2>&1)
-# Example: Linter for TypeScript
-#   LINTER_OUTPUT=$(npx eslint src/ 2>&1)
-
-echo "[1/N] Running [YOUR_LINTER] linter..."
-LINTER_ISSUES=0
-LINTER_EXIT=0
-# ---- REPLACE START ----
-echo "      ⚠ [YOUR_LINTER] placeholder - replace with actual linter command"
-# LINTER_OUTPUT=$([YOUR_LINTER] . 2>&1)
-# LINTER_EXIT=$?
-# if [ $LINTER_EXIT -eq 0 ]; then
-#     echo "      ✓ [YOUR_LINTER] check passed"
-#     LINTER_ISSUES=0
-# else
-#     echo "      ✗ [YOUR_LINTER] check failed"
-#     LINTER_ISSUES=1
-# fi
-# ---- REPLACE END ----
-
-# ==== TYPE CHECKER SECTION ====
-# Replace this placeholder with your language's type checker
-# Example: Type checker for Python
-#   TYPECHECK_OUTPUT=$(mypy src/ 2>&1)
-# Example: Type checker for TypeScript
-#   TYPECHECK_OUTPUT=$(tsc --noEmit 2>&1)
-
-echo ""
-echo "[2/N] Running [YOUR_TYPE_CHECKER] type checker..."
-TYPECHECK_ISSUES=0
-TYPECHECK_EXIT=0
-# ---- REPLACE START ----
-echo "      ⚠ [YOUR_TYPE_CHECKER] placeholder - replace with actual type checker command"
-# TYPECHECK_OUTPUT=$([YOUR_TYPE_CHECKER] 2>&1)
-# TYPECHECK_EXIT=$?
-# if [ $TYPECHECK_EXIT -eq 0 ]; then
-#     echo "      ✓ [YOUR_TYPE_CHECKER] check passed"
-#     TYPECHECK_ISSUES=0
-# else
-#     echo "      ✗ [YOUR_TYPE_CHECKER] check failed"
-#     TYPECHECK_ISSUES=1
-# fi
-# ---- REPLACE END ----
-
-# ==== DOMAIN PURITY SECTION (Optional) ====
-# For Python projects: uncomment and use check_purity.py
-# For other languages: implement equivalent via linter plugins or remove
-
-echo ""
-echo "[3/N] Running Domain Purity Check (Law 4)..."
-PURITY_ISSUES=0
-PURITY_EXIT=0
-# ---- REPLACE START ----
-echo "      ⚠ Domain purity check requires language-specific implementation"
-echo "      → See .harness/check_purity.py (Python reference plugin)"
-echo "      → For other languages, use equivalent linter rules"
-# For Python (uncomment if applicable):
-# PURITY_OUTPUT=$(python3 .harness/check_purity.py 2>&1)
-# PURITY_EXIT=$?
-# if [ $PURITY_EXIT -eq 0 ]; then
-#     echo "      ✓ Domain Purity check passed"
-#     PURITY_ISSUES=0
-# else
-#     echo "      ✗ Domain Purity check FAILED"
-#     PURITY_ISSUES=1
-# fi
-# ---- REPLACE END ----
-
-# ==== TEST RUNNER SECTION ====
-# Replace with your language's test runner with coverage
-# Example: pytest for Python
-#   TEST_OUTPUT=$(pytest --cov=src --cov-report=term-missing 2>&1)
-# Example: jest for JavaScript/TypeScript
-#   TEST_OUTPUT=$(jest --coverage 2>&1)
-
-echo ""
-echo "[4/N] Running [YOUR_TEST_RUNNER] with coverage..."
-TEST_STATUS="pass"
-COVERAGE=0
-TESTS_PASSED=0
-TESTS_FAILED=0
-TEST_EXIT=0
-# ---- REPLACE START ----
-echo "      ⚠ [YOUR_TEST_RUNNER] placeholder - replace with actual test command"
-# TEST_OUTPUT=$([YOUR_TEST_RUNNER] 2>&1)
-# TEST_EXIT=$?
-# COVERAGE=$(echo "$TEST_OUTPUT" | grep -E "coverage|%" | awk '{print $NF}')
-# if [ $TEST_EXIT -eq 0 ]; then
-#     echo "      ✓ [YOUR_TEST_RUNNER] passed"
-#     TEST_STATUS="pass"
-# else
-#     echo "      ✗ [YOUR_TEST_RUNNER] failed"
-#     TEST_STATUS="fail"
-# fi
-# TESTS_PASSED=$(echo "$TEST_OUTPUT" | grep -oP '\d+(?= passed)' || echo "0")
-# TESTS_FAILED=$(echo "$TEST_OUTPUT" | grep -oP '\d+(?= failed)' || echo "0")
-# ---- REPLACE END ----
-
-# ==== VERIFICATION GATE ====
-if [ $LINTER_EXIT -ne 0 ] || [ $TYPECHECK_EXIT -ne 0 ] || [ $PURITY_EXIT -ne 0 ] || [ $TEST_EXIT -ne 0 ]; then
-    echo ""
-    echo "============================================"
-    echo "  Verification FAILED ✗"
-    echo "============================================"
+# ===== Validate config =====
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "ERROR: harness.yaml not found at $CONFIG_FILE"
     exit 1
 fi
 
+# ===== Parse harness.yaml into associative array =====
+declare -A CFG
+while IFS='=' read -r k v; do
+    [ -n "$k" ] && CFG["$k"]="$v"
+done < <(python3 -c "
+import sys
+
+def parse_yaml(path):
+    result = {}
+    in_modules = False
+    current_module = None
+
+    with open(path) as f:
+        for raw in f:
+            line = raw.rstrip('\n')
+            stripped = line.strip()
+            if not stripped or stripped.startswith('#'):
+                continue
+
+            indent = len(raw) - len(raw.lstrip())
+            key, _, val = stripped.partition(':')
+            key = key.strip()
+            val = val.strip()
+
+            if indent == 0:
+                in_modules = (key == 'modules')
+                current_module = None
+                if val:
+                    result[key] = val
+            elif indent == 2 and in_modules:
+                current_module = key
+                if val:
+                    result[f'modules__{key}'] = val
+            elif indent >= 4 and current_module:
+                result[f'modules__{current_module}__{key}'] = val
+
+    return result
+
+cfg = parse_yaml(sys.argv[1])
+for k, v in cfg.items():
+    print(f'{k}={v}')
+" "$CONFIG_FILE")
+
+PROJECT_TYPE="${CFG[project_type]:-}"
+export PROJECT_TYPE
+echo "  Config   : harness.yaml"
+echo "  Type     : $PROJECT_TYPE"
 echo ""
-echo "============================================"
-echo "  All checks passed! ✓"
-echo "============================================"
 
-# ==== TELEMETRY (Constant - do not modify) ====
-TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+# ===== Bootstrap environment =====
+if [ "$PROJECT_TYPE" = "python" ]; then
+    echo "[Env] Bootstrapping Python environment..."
+    set +e
+    bash "$PLUGINS_DIR/python/setup_env.sh" 2>&1
+    ENV_RC=$?
+    set -e
+    if [ $ENV_RC -ne 0 ]; then
+        echo ""
+        echo "============================================"
+        echo "  Environment bootstrap FAILED ✗"
+        echo "  Cannot proceed without .venv"
+        echo "============================================"
+        exit 1
+    fi
+fi
 
-cat > telemetry.json << EOF
-{
-  "timestamp": "$TIMESTAMP",
-  "task_id": "$TASK_ID",
-  "metrics": {
-    "linter": {
-      "issues": $LINTER_ISSUES,
-      "exit_code": $LINTER_EXIT,
-      "tool": "[YOUR_LINTER]"
-    },
-    "type_checker": {
-      "issues": $TYPECHECK_ISSUES,
-      "exit_code": $TYPECHECK_EXIT,
-      "tool": "[YOUR_TYPE_CHECKER]"
-    },
-    "domain_purity": {
-      "issues": $PURITY_ISSUES,
-      "exit_code": $PURITY_EXIT,
-      "tool": "[DOMAIN_CHECK_TOOL]"
-    },
-    "coverage": {
-      "percentage": ${COVERAGE:-0},
-      "threshold": [COVERAGE_THRESHOLD],
-      "passed": $(echo "${COVERAGE:-0} >= [COVERAGE_THRESHOLD]" | bc 2>/dev/null || echo "true")
-    },
-    "tests": {
-      "passed": $TESTS_PASSED,
-      "failed": $TESTS_FAILED,
-      "status": "$TEST_STATUS",
-      "tool": "[YOUR_TEST_RUNNER]"
-    }
-  },
-  "complexity": {
-    "src_files": [SRC_FILE_COUNT],
-    "test_files": [TEST_FILE_COUNT],
-    "total_lines": [TOTAL_LINES]
-  }
+# ===== Setup result directory =====
+RESULT_DIR=$(mktemp -d)
+trap 'rm -rf "$RESULT_DIR"' EXIT
+export RESULT_DIR TASK_ID
+
+# ===== Plugin execution function =====
+run_plugin() {
+    local name="$1"
+    local script="$2"
+    local result_file="$RESULT_DIR/${name}.json"
+    local exit_file="$RESULT_DIR/${name}.exit"
+
+    echo ""
+    echo "[$name] Running $(basename "$script")..."
+
+    set +e
+    if [[ "$script" == *.py ]]; then
+        python3 "$script" "$result_file" 2>&1
+    else
+        bash "$script" "$result_file" 2>&1
+    fi
+    local ec=$?
+    set -e
+
+    echo "$ec" > "$exit_file"
+
+    if [ "$ec" -eq 0 ]; then
+        echo "  ✓ $name: PASSED"
+    else
+        echo "  ✗ $name: FAILED (exit=$ec)"
+    fi
+
+    if [ ! -f "$result_file" ]; then
+        python3 -c "
+import json, sys
+json.dump({'exit_code': $ec, 'error': 'no result file produced'}, sys.stdout)
+" > "$result_file"
+    fi
 }
-EOF
+
+# ===== Dispatch plugins based on project_type =====
+if [ "$PROJECT_TYPE" = "python" ]; then
+
+    if [ "${CFG[modules__linter__enabled]:-false}" = "true" ]; then
+        run_plugin "linter" "$PLUGINS_DIR/python/run_linter.sh"
+    fi
+
+    if [ "${CFG[modules__type_checker__enabled]:-false}" = "true" ]; then
+        run_plugin "type_checker" "$PLUGINS_DIR/python/run_typecheck.sh"
+    fi
+
+    if [ "${CFG[modules__domain_purity__enabled]:-false}" = "true" ]; then
+        run_plugin "domain_purity" "$PLUGINS_DIR/architecture/check_purity.py"
+    fi
+
+    if [ "${CFG[modules__tests__enabled]:-false}" = "true" ]; then
+        run_plugin "tests" "$PLUGINS_DIR/python/run_tests.sh"
+    fi
+else
+    echo "  ⚠ Unsupported project_type: '$PROJECT_TYPE' - no plugins dispatched"
+fi
+
+# ===== Generate telemetry.json (Python json module - no heredoc) =====
+echo ""
+echo "Generating telemetry.json..."
+
+python3 << 'TELEGEN'
+import json
+import os
+import subprocess
+from datetime import datetime, timezone
+
+result_dir = os.environ["RESULT_DIR"]
+task_id = os.environ.get("TASK_ID", "") or None
+project_type = os.environ.get("PROJECT_TYPE", "unknown")
+
+
+def read_result(name):
+    path = os.path.join(result_dir, f"{name}.json")
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except Exception:
+        return {"exit_code": -1, "error": "result not found"}
+
+
+def read_exit(name):
+    path = os.path.join(result_dir, f"{name}.exit")
+    try:
+        with open(path) as f:
+            return int(f.read().strip())
+    except Exception:
+        return -1
+
+
+def safe_count(*find_args):
+    try:
+        r = subprocess.run(
+            ["find"] + list(find_args) + ["-type", "f"],
+            capture_output=True, text=True, timeout=10
+        )
+        lines = [l for l in r.stdout.strip().split("\n") if l]
+        return len(lines)
+    except Exception:
+        return 0
+
+
+def safe_line_count(*dirs):
+    total = 0
+    for d in dirs:
+        try:
+            r = subprocess.run(
+                ["find", d, "-name", "*.py", "-type", "f"],
+                capture_output=True, text=True, timeout=10
+            )
+            files = [l for l in r.stdout.strip().split("\n") if l]
+            for fp in files:
+                try:
+                    with open(fp) as fh:
+                        total += sum(1 for _ in fh)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    return total
+
+
+telemetry = {
+    "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "task_id": task_id,
+    "project_type": project_type,
+    "metrics": {
+        "linter": read_result("linter"),
+        "type_checker": read_result("type_checker"),
+        "domain_purity": read_result("domain_purity"),
+        "tests": read_result("tests"),
+    },
+    "complexity": {
+        "src_files": safe_count("src", "-name", "*.py"),
+        "test_files": safe_count("tests", "-name", "test_*.py"),
+        "total_lines": safe_line_count("src", "tests"),
+    },
+}
+
+with open("telemetry.json", "w") as f:
+    json.dump(telemetry, f, indent=2)
+    f.write("\n")
+
+print("  ✓ telemetry.json generated")
+TELEGEN
 
 echo ""
-echo "Telemetry report:"
 cat telemetry.json
 
-# ==== PROGRESS UPDATE (Constant - do not modify) ====
-echo ""
-echo "Updating progress.txt..."
-PROGRESS_ENTRY="### $(date '+%Y-%m-%d %H:%M:%S') - Task: ${TASK_ID:-none}\n"
-PROGRESS_ENTRY+="| Metric | Value |\n"
-PROGRESS_ENTRY+="|--------|-------|\n"
-PROGRESS_ENTRY+="| Linter Issues | $LINTER_ISSUES |\n"
-PROGRESS_ENTRY+="| Type Checker Issues | $TYPECHECK_ISSUES |\n"
-PROGRESS_ENTRY+="| Domain Purity | $([ $PURITY_EXIT -eq 0 ] && echo 'pass' || echo 'FAIL') |\n"
-PROGRESS_ENTRY+="| Coverage | ${COVERAGE:-0}% |\n"
-PROGRESS_ENTRY+="| Tests | $TESTS_PASSED passed, $TESTS_FAILED failed |\n"
-PROGRESS_ENTRY+="| Commit | telemetry.json generated |\n"
-PROGRESS_ENTRY+="\n"
-
-echo -e "$PROGRESS_ENTRY" >> docs/exec-plans/progress.txt
-echo "      ✓ Progress updated"
-
-# ==== AUTO-COMMIT (Constant - do not modify) ====
-echo ""
-echo "Auto-committing changes..."
-git add -A
-COMMIT_MSG="chore: verified code quality"
-if [ -n "$TASK_ID" ]; then
-    COMMIT_MSG="chore($TASK_ID): verified code quality"
+# ===== Update progress.txt =====
+if [ -d "docs/exec-plans" ]; then
+    echo ""
+    echo "Updating progress.txt..."
+    PROGRESS_LINE="### $(date '+%Y-%m-%d %H:%M:%S') - Task: ${TASK_ID:-none} - Dispatcher: microkernel"
+    echo "$PROGRESS_LINE" >> docs/exec-plans/progress.txt
+    echo "  ✓ Progress updated"
 fi
-git commit -m "$COMMIT_MSG" || echo "Nothing to commit"
-echo "      ✓ Auto-commit complete"
 
-exit 0
+# ===== Final verification gate =====
+OVERALL_EXIT=0
+for ef in "$RESULT_DIR"/*.exit; do
+    [ -f "$ef" ] || continue
+    code=$(cat "$ef")
+    if [ "$code" -ne 0 ]; then
+        OVERALL_EXIT=1
+    fi
+done
+
+echo ""
+if [ "$OVERALL_EXIT" -eq 0 ]; then
+    echo "============================================"
+    echo "  All checks passed! ✓"
+    echo "============================================"
+
+    echo ""
+    echo "[Git] Running auto-commit..."
+    set +e
+    bash "$PLUGINS_DIR/git/auto_commit.sh" 2>&1
+    set -e
+else
+    echo "============================================"
+    echo "  Verification FAILED ✗"
+    echo "============================================"
+fi
+
+exit $OVERALL_EXIT

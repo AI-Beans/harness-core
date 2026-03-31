@@ -1,0 +1,40 @@
+{
+  "timestamp": "2026-03-31T07:13:08Z",
+  "task_id": "Task-027",
+  "project_type": "python",
+  "metrics": {
+    "linter": {
+      "exit_code": 0,
+      "issues": 0,
+      "tool": "ruff"
+    },
+    "type_checker": {
+      "exit_code": 0,
+      "issues": 0,
+      "tool": "mypy"
+    },
+    "domain_purity": {
+      "exit_code": 0,
+      "issues": 0,
+      "tool": "check_purity.py",
+      "files_scanned": 1
+    },
+    "tests": {
+      "exit_code": 0,
+      "tool": "pytest",
+      "passed": 1,
+      "failed": 0,
+      "status": "pass",
+      "coverage": {
+        "percentage": 100,
+        "threshold": 80,
+        "passed": true
+      }
+    }
+  },
+  "complexity": {
+    "src_files": 4,
+    "test_files": 1,
+    "total_lines": 2
+  }
+}

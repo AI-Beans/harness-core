@@ -1,0 +1,14 @@
+version: 1.0
+project_type: python
+
+modules:
+  linter:
+    enabled: true
+    plugin: ruff
+  type_checker:
+    enabled: true
+    plugin: mypy
+  tests:
+    enabled: true
+  domain_purity:
+    enabled: true
