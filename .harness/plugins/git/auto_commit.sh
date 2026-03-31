@@ -36,6 +36,7 @@ STAGE_PATHS=(
     "src/"
     "tests/"
     "docs/"
+    ".harness/"
     "harness.yaml"
     "telemetry.json"
     "AGENTS.md"
